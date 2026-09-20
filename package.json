@@ -1,0 +1,27 @@
+{
+  "name": "unifi-guest-portal",
+  "version": "1.0.0-alpha",
+  "description": "UniFi Guest Portal with Slack Socket Mode integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js",
+    "test": "jest",
+    "start": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.21.4",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.13",
+    "@types/node": "^18.19.50",
+    "esbuild": "^0.23.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2"
+  }
+}
