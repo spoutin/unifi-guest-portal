@@ -73,6 +73,9 @@ export function createServer(store: Store) {
             <div id="approved-msg" class="hidden">
               <p style="color: green; text-align: center; font-weight: bold;">Access Approved! Connecting you now...</p>
             </div>
+            <div id="denied-msg" class="hidden">
+              <p style="color: red; text-align: center; font-weight: bold;">Access Denied. Your request was rejected by an administrator.</p>
+            </div>
           </div>
         </div>
 
@@ -110,6 +113,10 @@ export function createServer(store: Store) {
                 setTimeout(() => {
                   window.location.href = redirectUrl || "http://www.google.com";
                 }, 2000);
+              } else if (data.status === 'denied') {
+                clearInterval(interval);
+                document.getElementById('loader').classList.add('hidden');
+                document.getElementById('denied-msg').classList.remove('hidden');
               }
             }, 3000);
           }
