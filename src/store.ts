@@ -6,6 +6,7 @@ export interface GuestRequest {
   reason: string;
   status: 'pending' | 'approved' | 'denied';
   createdAt: number;
+  processedBy?: string;
 }
 
 export class Store {
@@ -49,11 +50,14 @@ export class Store {
     return this.requests.get(mac.toLowerCase());
   }
 
-  public updateRequestStatus(mac: string, status: 'approved' | 'denied'): boolean {
+  public updateRequestStatus(mac: string, status: 'approved' | 'denied', processedBy?: string): boolean {
     const formattedMac = mac.toLowerCase();
     const req = this.requests.get(formattedMac);
     if (!req) return false;
     req.status = status;
+    if (processedBy) {
+      req.processedBy = processedBy;
+    }
     return true;
   }
 }

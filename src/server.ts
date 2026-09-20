@@ -74,7 +74,7 @@ export function createServer(store: Store) {
               <p style="color: green; text-align: center; font-weight: bold;">Access Approved! Connecting you now...</p>
             </div>
             <div id="denied-msg" class="hidden">
-              <p style="color: red; text-align: center; font-weight: bold;">Access Denied. Your request was rejected by an administrator.</p>
+              <p style="color: red; text-align: center; font-weight: bold;">Access Denied. Your request was rejected<span id="denied-admin"> by an administrator</span>.</p>
             </div>
           </div>
         </div>
@@ -116,6 +116,9 @@ export function createServer(store: Store) {
               } else if (data.status === 'denied') {
                 clearInterval(interval);
                 document.getElementById('loader').classList.add('hidden');
+                if (data.processedBy) {
+                  document.getElementById('denied-admin').textContent = ' by @' + data.processedBy;
+                }
                 document.getElementById('denied-msg').classList.remove('hidden');
               }
             }, 3000);
@@ -153,7 +156,10 @@ export function createServer(store: Store) {
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    res.json({ status: request.status });
+    res.json({ 
+      status: request.status,
+      processedBy: request.processedBy
+    });
   });
 
   return app;

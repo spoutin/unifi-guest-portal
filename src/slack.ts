@@ -101,7 +101,7 @@ export class SlackIntegration {
         const success = await this.unifi.authorizeGuest(mac, duration);
 
         if (success) {
-          this.store.updateRequestStatus(mac, 'approved');
+          this.store.updateRequestStatus(mac, 'approved', admin);
           logger.info(`MAC ${mac} successfully approved by @${admin} and authorized on the UniFi Controller.`);
           await respond({
             text: `Approved guest ${mac}`,
@@ -116,7 +116,7 @@ export class SlackIntegration {
             ]
           });
         } else {
-          this.store.updateRequestStatus(mac, 'denied');
+          this.store.updateRequestStatus(mac, 'denied', admin);
           logger.warn(`MAC ${mac} authorization FAILED on the UniFi Controller. Reverting state to denied.`);
           await respond({
             text: `WiFi Approval Failed for ${mac}`,
@@ -149,7 +149,7 @@ export class SlackIntegration {
 
       // Run asynchronously in background to prevent Slack timeout
       const task = (async () => {
-        this.store.updateRequestStatus(mac, 'denied');
+        this.store.updateRequestStatus(mac, 'denied', admin);
         logger.info(`MAC ${mac} was denied Wi-Fi access by @${admin}.`);
 
         await respond({
