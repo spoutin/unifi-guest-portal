@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge)
+        systemctl stop unifi-guest-portal.service || true
+        systemctl disable unifi-guest-portal.service || true
+        ;;
+esac
+
+exit 0

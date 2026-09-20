@@ -1,0 +1,10 @@
+Package: unifi-guest-portal
+Version: 1.0.0-alpha
+Section: utils
+Priority: optional
+Architecture: all
+Maintainer: opencode <agent@opencode.local>
+Depends: nodejs (>= 18.0.0)
+Description: UniFi Captive Portal Slack Integration
+ Captive portal that allows guests to sign in and requests
+ authorization directly via Slack Interactive Messages using Socket Mode.

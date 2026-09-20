@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create unifi-portal user if it doesn't exist
+        if ! id "unifi-portal" >/dev/null 2>&1; then
+            useradd --system --shell /bin/false unifi-portal
+        fi
+
+        # Make sure directory permissions are set
+        mkdir -p /var/log/unifi-guest-portal
+        chown -R unifi-portal:unifi-portal /usr/share/unifi-guest-portal
+        chown -R unifi-portal:unifi-portal /var/log/unifi-guest-portal
+
+        # Copy example configuration if config.env doesn't exist yet
+        if [ ! -f /etc/unifi-guest-portal/config.env ]; then
+            mkdir -p /etc/unifi-guest-portal
+            cp /usr/share/unifi-guest-portal/config.env.example /etc/unifi-guest-portal/config.env
+            chmod 600 /etc/unifi-guest-portal/config.env
+            chown unifi-portal:unifi-portal /etc/unifi-guest-portal/config.env
+        fi
+
+        # Reload systemd and start/enable service
+        systemctl daemon-reload
+        systemctl enable unifi-guest-portal.service
+        systemctl restart unifi-guest-portal.service || true
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,18 @@
+[Unit]
+Description=UniFi Guest Portal with Slack Integration
+After=network.target
+
+[Service]
+Type=simple
+User=unifi-portal
+WorkingDirectory=/usr/share/unifi-guest-portal
+Environment="NODE_ENV=production"
+Environment="CONFIG_PATH=/etc/unifi-guest-portal/config.env"
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=unifi-guest-portal
+
+[Install]
+WantedBy=multi-user.target

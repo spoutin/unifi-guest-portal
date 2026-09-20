@@ -1,0 +1,55 @@
+name: Build Debian Package
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build JS bundle
+      run: npm run build
+
+    - name: Create Debian Directory Layout
+      run: |
+        mkdir -p pkg/DEBIAN
+        mkdir -p pkg/usr/share/unifi-guest-portal/dist
+        mkdir -p pkg/lib/systemd/system
+        
+        # Copy Debian package scripts and control
+        cp debian/control pkg/DEBIAN/
+        cp debian/postinst pkg/DEBIAN/
+        cp debian/prerm pkg/DEBIAN/
+        chmod 755 pkg/DEBIAN/postinst
+        chmod 755 pkg/DEBIAN/prerm
+        
+        # Copy built app files
+        cp dist/index.js pkg/usr/share/unifi-guest-portal/dist/
+        cp package.json pkg/usr/share/unifi-guest-portal/
+        cp debian/config.env.example pkg/usr/share/unifi-guest-portal/config.env.example
+        
+        # Copy Systemd Unit file
+        cp debian/unifi-guest-portal.service pkg/lib/systemd/system/
+
+    - name: Build .deb Package
+      run: |
+        dpkg-deb --build pkg unifi-guest-portal.deb
+
+    - name: Upload Debian Package Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: unifi-guest-portal-deb
+        path: unifi-guest-portal.deb
