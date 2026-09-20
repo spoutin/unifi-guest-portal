@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { UnifiClient } from '../src/unifi';
+import { logger } from '../src/logger';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -46,13 +47,13 @@ describe('UnifiClient', () => {
     mockedAxios.create.mockReturnValue(mockedAxios as any);
     mockedAxios.post.mockRejectedValueOnce(new Error('Network Error')); // Login call fails
 
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const loggerErrorSpy = jest.spyOn(logger, 'error').mockImplementation(() => logger as any);
 
     const client = new UnifiClient(config);
     const success = await client.authorizeGuest('00:11:22:33:44:55', 1440);
     expect(success).toBe(false);
-    expect(consoleErrorSpy).toHaveBeenCalled();
-    consoleErrorSpy.mockRestore();
+    expect(loggerErrorSpy).toHaveBeenCalled();
+    loggerErrorSpy.mockRestore();
   });
 
   it('should return false if authorize call returns status other than ok', async () => {

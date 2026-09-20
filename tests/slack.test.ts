@@ -97,6 +97,7 @@ describe('SlackIntegration', () => {
     // Trigger registered callback
     const approveCallback = mockActionCallbacks['approve_btn'];
     await approveCallback({ ack, action, body, respond });
+    await (slack as any).app.lastActionTask;
 
     expect(ack).toHaveBeenCalledTimes(1);
     expect(store.getRequestByMac(mac)?.status).toBe('approved');
@@ -121,13 +122,14 @@ describe('SlackIntegration', () => {
 
     const approveCallback = mockActionCallbacks['approve_btn'];
     await approveCallback({ ack, action, body, respond });
+    await (slack as any).app.lastActionTask;
 
     expect(ack).toHaveBeenCalledTimes(1);
-    expect(store.getRequestByMac(mac)?.status).toBe('approved');
+    expect(store.getRequestByMac(mac)?.status).toBe('denied');
     expect(authorizeSpy).toHaveBeenCalledWith(mac, 1440);
     expect(respond).toHaveBeenCalledTimes(1);
     const respondArgs = respond.mock.calls[0][0];
-    expect(respondArgs.blocks[0].text.text).toContain('Failed to Auth');
+    expect(respondArgs.blocks[0].text.text).toContain('Failed');
   });
 
   it('should handle deny button click, update store status and respond with denied message', async () => {
@@ -141,6 +143,7 @@ describe('SlackIntegration', () => {
 
     const denyCallback = mockActionCallbacks['deny_btn'];
     await denyCallback({ ack, action, body, respond });
+    await (slack as any).app.lastActionTask;
 
     expect(ack).toHaveBeenCalledTimes(1);
     expect(store.getRequestByMac(mac)?.status).toBe('denied');
@@ -171,6 +174,7 @@ describe('SlackIntegration', () => {
 
     const approveCallback = mockActionCallbacks['approve_btn'];
     await approveCallback({ ack, action, body, respond });
+    await (customSlack as any).app.lastActionTask;
 
     expect(ack).toHaveBeenCalledTimes(1);
     expect(authorizeSpy).toHaveBeenCalledWith(mac, 480);

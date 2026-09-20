@@ -1,6 +1,6 @@
 {
   "name": "unifi-guest-portal",
-  "version": "1.0.0-alpha.5",
+  "version": "1.0.0-alpha.6",
   "description": "UniFi Guest Portal with Slack Socket Mode integration",
   "main": "dist/index.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "@slack/bolt": "^3.21.4",
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "winston": "^3.15.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
