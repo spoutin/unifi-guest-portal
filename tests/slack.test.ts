@@ -68,6 +68,19 @@ describe('SlackIntegration', () => {
     expect(actionsBlock.elements[1].value).toBe('00:11:22:33:44:55');
   });
 
+  it('should escape Slack special characters in guest-submitted fields to prevent injection', async () => {
+    const maliciousName = '<@U12345> & <!channel>';
+    const maliciousReason = 'Need <WiFi> & Fun';
+    const request = store.createRequest('00:11:22:33:44:55', 'AP-1', 'http://original-url', maliciousName, maliciousReason);
+    await slack.postApprovalMessage(request);
+
+    expect(mockPostMessage).toHaveBeenCalledTimes(1);
+    const postArgs = mockPostMessage.mock.calls[0][0];
+    expect(postArgs.text).toBe('New WiFi Guest Request from &lt;@U12345&gt; &amp; &lt;!channel&gt;');
+    expect(postArgs.blocks[0].text.text).toContain('&lt;@U12345&gt; &amp; &lt;!channel&gt;');
+    expect(postArgs.blocks[0].text.text).toContain('Need &lt;WiFi&gt; &amp; Fun');
+  });
+
   it('should handle approve button click, update store status, call Unifi authorization and respond with success message', async () => {
     // Setup request in store
     const mac = '00:11:22:33:44:55';
@@ -136,5 +149,30 @@ describe('SlackIntegration', () => {
     expect(respondArgs.text).toContain(`Denied guest ${mac}`);
     expect(respondArgs.blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
     expect(respondArgs.blocks[0].text.text).toContain('@admin_user');
+  });
+
+  it('should use custom guestAuthDuration if provided in SlackConfig', async () => {
+    const customSlack = new SlackIntegration({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      channelId: 'C123',
+      guestAuthDuration: 480
+    }, store, unifi);
+
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business meeting');
+
+    const authorizeSpy = jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = { user: { name: 'admin_user' } };
+
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({ ack, action, body, respond });
+
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(authorizeSpy).toHaveBeenCalledWith(mac, 480);
   });
 });

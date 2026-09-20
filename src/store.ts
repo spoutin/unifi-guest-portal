@@ -11,6 +11,25 @@ export interface GuestRequest {
 export class Store {
   private requests: Map<string, GuestRequest> = new Map();
 
+  constructor() {
+    setInterval(() => this.cleanup(), 15 * 60 * 1000).unref();
+  }
+
+  public cleanup(): void {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+
+    for (const [mac, req] of this.requests.entries()) {
+      const age = now - req.createdAt;
+      if (req.status === 'pending' && age > oneHour) {
+        this.requests.delete(mac);
+      } else if ((req.status === 'approved' || req.status === 'denied') && age > twentyFourHours) {
+        this.requests.delete(mac);
+      }
+    }
+  }
+
   public createRequest(mac: string, ap: string, url: string, name: string, reason: string): GuestRequest {
     const formattedMac = mac.toLowerCase();
     const request: GuestRequest = {

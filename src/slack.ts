@@ -2,10 +2,18 @@ import { App } from '@slack/bolt';
 import { Store, GuestRequest } from './store';
 import { UnifiClient } from './unifi';
 
+export function escapeSlack(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export interface SlackConfig {
   botToken: string;
   appToken: string;
   channelId: string;
+  guestAuthDuration?: number;
 }
 
 export class SlackIntegration {
@@ -34,15 +42,18 @@ export class SlackIntegration {
   }
 
   public async postApprovalMessage(request: GuestRequest): Promise<void> {
+    const escapedName = escapeSlack(request.name);
+    const escapedReason = escapeSlack(request.reason);
+
     await this.app.client.chat.postMessage({
       channel: this.config.channelId,
-      text: `New WiFi Guest Request from ${request.name}`,
+      text: `New WiFi Guest Request from ${escapedName}`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*New WiFi Access Request*\n*Name:* ${request.name}\n*Reason:* ${request.reason}\n*MAC Address:* \`${request.mac}\``
+            text: `*New WiFi Access Request*\n*Name:* ${escapedName}\n*Reason:* ${escapedReason}\n*MAC Address:* \`${request.mac}\``
           }
         },
         {
@@ -81,7 +92,8 @@ export class SlackIntegration {
       this.store.updateRequestStatus(mac, 'approved');
       
       // Authorize on UniFi (defaulting to 24 hours / 1440 mins)
-      const success = await this.unifi.authorizeGuest(mac, 1440);
+      const duration = this.config.guestAuthDuration || 1440;
+      const success = await this.unifi.authorizeGuest(mac, duration);
 
       await respond({
         text: `Approved guest ${mac}`,

@@ -9,9 +9,7 @@ case "$1" in
         fi
 
         # Make sure directory permissions are set
-        mkdir -p /var/log/unifi-guest-portal
-        chown -R unifi-portal:unifi-portal /usr/share/unifi-guest-portal
-        chown -R unifi-portal:unifi-portal /var/log/unifi-guest-portal
+        chown -R root:root /usr/share/unifi-guest-portal
 
         # Copy example configuration if config.env doesn't exist yet
         if [ ! -f /etc/unifi-guest-portal/config.env ]; then

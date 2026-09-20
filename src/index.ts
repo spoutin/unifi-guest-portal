@@ -8,7 +8,11 @@ dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
 export const appVersion = '1.0.0-alpha';
 
-const port = parseInt(process.env.PORT || '3000', 10);
+const parsedPort = parseInt(process.env.PORT || '3000', 10);
+const port = isNaN(parsedPort) ? 3000 : parsedPort;
+
+const parsedGuestAuthDuration = parseInt(process.env.GUEST_AUTH_DURATION || '1440', 10);
+const guestAuthDuration = isNaN(parsedGuestAuthDuration) ? 1440 : parsedGuestAuthDuration;
 
 const unifi = new UnifiClient({
   url: process.env.UNIFI_CONTROLLER_URL || '',
@@ -20,7 +24,8 @@ const unifi = new UnifiClient({
 const slack = new SlackIntegration({
   botToken: process.env.SLACK_BOT_TOKEN || '',
   appToken: process.env.SLACK_APP_TOKEN || '',
-  channelId: process.env.SLACK_CHANNEL_ID || ''
+  channelId: process.env.SLACK_CHANNEL_ID || '',
+  guestAuthDuration
 }, store, unifi);
 
 const app = createServer(store);

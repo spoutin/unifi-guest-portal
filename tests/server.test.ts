@@ -53,6 +53,35 @@ describe('Web Server API', () => {
     expect(res.body.error).toBe('MAC, Name, and Reason are required');
   });
 
+  it('should return 400 if MAC address format is invalid', async () => {
+    const res = await request(app)
+      .post('/api/register')
+      .send({ mac: 'invalid-mac', name: 'Bob', reason: 'Developer' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid MAC address format');
+  });
+
+  it('should return 400 if name exceeds 100 characters', async () => {
+    const longName = 'A'.repeat(101);
+    const res = await request(app)
+      .post('/api/register')
+      .send({ mac: '11:22:33:44:55:66', name: longName, reason: 'Developer' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Name must be 100 characters or less');
+  });
+
+  it('should return 400 if reason exceeds 250 characters', async () => {
+    const longReason = 'B'.repeat(251);
+    const res = await request(app)
+      .post('/api/register')
+      .send({ mac: '11:22:33:44:55:66', name: 'Bob', reason: longReason });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Reason must be 250 characters or less');
+  });
+
   it('should return 404 if request is not found for status poll', async () => {
     const res = await request(app).get('/api/status/ff:ff:ff:ff:ff:ff');
     expect(res.status).toBe(404);

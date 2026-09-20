@@ -125,6 +125,16 @@ export function createServer(store: Store) {
     if (!mac || !name || !reason) {
       return res.status(400).json({ error: 'MAC, Name, and Reason are required' });
     }
+    const macRegex = /^([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})$/;
+    if (!macRegex.test(mac)) {
+      return res.status(400).json({ error: 'Invalid MAC address format' });
+    }
+    if (name.length > 100) {
+      return res.status(400).json({ error: 'Name must be 100 characters or less' });
+    }
+    if (reason.length > 250) {
+      return res.status(400).json({ error: 'Reason must be 250 characters or less' });
+    }
     const request = store.createRequest(mac, ap, url, name, reason);
     app.emit('guest_registered', request); // Emit event for Slack integration
     res.json(request);
