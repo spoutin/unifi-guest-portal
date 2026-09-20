@@ -87,26 +87,30 @@ export class SlackIntegration {
       if (action.type !== 'button') return;
       const mac = action.value;
       if (!mac) return;
-      const admin = (body as any).user.name;
+      const admin = (body as any).user?.name || 'unknown';
 
-      this.store.updateRequestStatus(mac, 'approved');
-      
-      // Authorize on UniFi (defaulting to 24 hours / 1440 mins)
-      const duration = this.config.guestAuthDuration || 1440;
-      const success = await this.unifi.authorizeGuest(mac, duration);
+      // Run heavy UniFi and network response tasks asynchronously in the background
+      // to guarantee the Slack ack() frame is dispatched and received instantly (within 3s)
+      (async () => {
+        this.store.updateRequestStatus(mac, 'approved');
+        
+        // Authorize on UniFi (defaulting to 24 hours / 1440 mins)
+        const duration = this.config.guestAuthDuration || 1440;
+        const success = await this.unifi.authorizeGuest(mac, duration);
 
-      await respond({
-        text: `Approved guest ${mac}`,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `✅ *WiFi Request Approved*\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* ${success ? 'Authorized' : 'Failed to Auth'}`
+        await respond({
+          text: `Approved guest ${mac}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `✅ *WiFi Request Approved*\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* ${success ? 'Authorized' : 'Failed to Auth'}`
+              }
             }
-          }
-        ]
-      });
+          ]
+        });
+      })().catch(err => console.error('Error in approve action background task:', err));
     });
 
     // Deny Button Action Handler
@@ -115,22 +119,25 @@ export class SlackIntegration {
       if (action.type !== 'button') return;
       const mac = action.value;
       if (!mac) return;
-      const admin = (body as any).user.name;
+      const admin = (body as any).user?.name || 'unknown';
 
-      this.store.updateRequestStatus(mac, 'denied');
+      // Run asynchronously in background to prevent Slack timeout
+      (async () => {
+        this.store.updateRequestStatus(mac, 'denied');
 
-      await respond({
-        text: `Denied guest ${mac}`,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `❌ *WiFi Request Denied*\n*MAC Address:* \`${mac}\`\n*Denied By:* @${admin}`
+        await respond({
+          text: `Denied guest ${mac}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *WiFi Request Denied*\n*MAC Address:* \`${mac}\`\n*Denied By:* @${admin}`
+              }
             }
-          }
-        ]
-      });
+          ]
+        });
+      })().catch(err => console.error('Error in deny action background task:', err));
     });
   }
 }
