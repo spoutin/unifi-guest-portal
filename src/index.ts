@@ -30,6 +30,8 @@ const slack = new SlackIntegration({
 
 const app = createServer(store);
 
+const host = process.env.HOST || '0.0.0.0';
+
 // Hook guest_registered event to trigger Slack message
 (app as any).on('guest_registered', async (request: GuestRequest) => {
   try {
@@ -49,8 +51,8 @@ async function main() {
   }
 
   // Start Express server
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`unifi-guest-portal server running on port ${port}`);
+  app.listen(port, host, () => {
+    console.log(`unifi-guest-portal server running on ${host}:${port}`);
   });
 }
 
