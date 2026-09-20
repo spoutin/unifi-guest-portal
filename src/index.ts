@@ -40,8 +40,13 @@ const app = createServer(store);
 });
 
 async function main() {
-  // Start Slack client
-  await slack.start();
+  // Start Slack client gracefully
+  try {
+    await slack.start();
+  } catch (err) {
+    console.error('CRITICAL WARNING: Failed to start Slack Socket Mode client. Check that your SLACK_BOT_TOKEN (xoxb-...) and SLACK_APP_TOKEN (xapp-...) are set correctly inside /etc/unifi-guest-portal/config.env.');
+    console.error(err);
+  }
 
   // Start Express server
   app.listen(port, '0.0.0.0', () => {
