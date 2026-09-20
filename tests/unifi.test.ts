@@ -27,6 +27,21 @@ describe('UnifiClient', () => {
     expect(success).toBe(true);
   });
 
+  it('should authorize directly using API key without logging in', async () => {
+    mockedAxios.create.mockReturnValue(mockedAxios as any);
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { meta: { rc: 'ok' } }
+    }); // Authorize call directly, no login call beforehand
+
+    const client = new UnifiClient({
+      url: 'https://192.168.1.10:8443',
+      site: 'default',
+      apiKey: 'api-key-xyz'
+    });
+    const success = await client.authorizeGuest('00:11:22:33:44:55', 1440);
+    expect(success).toBe(true);
+  });
+
   it('should return false if login fails', async () => {
     mockedAxios.create.mockReturnValue(mockedAxios as any);
     mockedAxios.post.mockRejectedValueOnce(new Error('Network Error')); // Login call fails

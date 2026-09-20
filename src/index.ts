@@ -6,7 +6,7 @@ import { SlackIntegration } from './slack';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.0-alpha.3';
+export const appVersion = '1.0.0-alpha.4';
 
 const parsedPort = parseInt(process.env.PORTAL_PORT || process.env.PORT || '3000', 10);
 const port = isNaN(parsedPort) ? 3000 : parsedPort;
@@ -18,7 +18,8 @@ const unifi = new UnifiClient({
   url: process.env.UNIFI_CONTROLLER_URL || '',
   username: process.env.UNIFI_USERNAME || '',
   password: process.env.UNIFI_PASSWORD || '',
-  site: process.env.UNIFI_SITE || 'default'
+  site: process.env.UNIFI_SITE || 'default',
+  apiKey: process.env.UNIFI_API_KEY || ''
 });
 
 const slack = new SlackIntegration({

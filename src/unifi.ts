@@ -3,9 +3,10 @@ import * as https from 'https';
 
 export interface UnifiConfig {
   url: string;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
   site: string;
+  apiKey?: string;
 }
 
 export class UnifiClient {
@@ -14,14 +15,25 @@ export class UnifiClient {
 
   constructor(config: UnifiConfig) {
     this.config = config;
+    
+    const headers: Record<string, string> = {};
+    if (config.apiKey) {
+      headers['X-API-KEY'] = config.apiKey;
+      headers['Authorization'] = `Bearer ${config.apiKey}`;
+    }
+
     this.client = axios.create({
       baseURL: config.url,
+      headers: headers,
       httpsAgent: new https.Agent({ rejectUnauthorized: false }), // Self-signed cert support
       withCredentials: true
     });
   }
 
   private async login(): Promise<void> {
+    if (this.config.apiKey) {
+      return; // Skip authentication call since we are using API Keys
+    }
     const res = await this.client.post('/api/auth/login', {
       username: this.config.username,
       password: this.config.password
