@@ -34,6 +34,16 @@ describe('Web Server API', () => {
     expect(res.text).toContain('value="http://apple.com"');
   });
 
+  it('should escape HTML special characters to prevent reflected XSS', async () => {
+    const maliciousInput = '"><script>alert(1)</script>';
+    const res = await request(app)
+      .get(`/guest/s/default/?id=${encodeURIComponent(maliciousInput)}&ap=${encodeURIComponent(maliciousInput)}&url=${encodeURIComponent(maliciousInput)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain(maliciousInput);
+    expect(res.text).toContain('value="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
+  });
+
   it('should return 400 if required fields are missing on register', async () => {
     const res = await request(app)
       .post('/api/register')

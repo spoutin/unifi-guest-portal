@@ -1,6 +1,19 @@
 import express from 'express';
 import { Store } from './store';
 
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>"']/g, (m) => {
+    switch (m) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#039;';
+      default: return m;
+    }
+  });
+}
+
 export function createServer(store: Store) {
   const app = express();
   app.use(express.json());
@@ -8,9 +21,9 @@ export function createServer(store: Store) {
 
   // Captive Portal Splash Landing
   app.get('/guest/s/:site/', (req, res) => {
-    const mac = (req.query.id as string) || '';
-    const ap = (req.query.ap as string) || '';
-    const url = (req.query.url as string) || '';
+    const mac = escapeHtml((req.query.id as string) || '');
+    const ap = escapeHtml((req.query.ap as string) || '');
+    const url = escapeHtml((req.query.url as string) || '');
 
     res.send(`
       <!DOCTYPE html>
