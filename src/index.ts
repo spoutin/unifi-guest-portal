@@ -8,7 +8,7 @@ dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
 export const appVersion = '1.0.0-alpha';
 
-const parsedPort = parseInt(process.env.PORT || '3000', 10);
+const parsedPort = parseInt(process.env.PORTAL_PORT || process.env.PORT || '3000', 10);
 const port = isNaN(parsedPort) ? 3000 : parsedPort;
 
 const parsedGuestAuthDuration = parseInt(process.env.GUEST_AUTH_DURATION || '1440', 10);
@@ -30,7 +30,7 @@ const slack = new SlackIntegration({
 
 const app = createServer(store);
 
-const host = process.env.HOST || '0.0.0.0';
+const host = process.env.PORTAL_HOST || process.env.HOST || '0.0.0.0';
 
 // Hook guest_registered event to trigger Slack message
 (app as any).on('guest_registered', async (request: GuestRequest) => {
