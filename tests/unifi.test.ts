@@ -54,4 +54,26 @@ describe('UnifiClient', () => {
     const success = await client.authorizeGuest('00:11:22:33:44:55', 1440);
     expect(success).toBe(false);
   });
+
+  it('should fallback to standard path if modern proxy path returns 404', async () => {
+    mockedAxios.create.mockReturnValue(mockedAxios as any);
+    mockedAxios.post.mockResolvedValueOnce({
+      headers: { 'set-cookie': ['unifises=xyz'] },
+      data: {}
+    }); // Login call
+    
+    // Simulate 404 on proxy path
+    const err404 = new Error('Not Found') as any;
+    err404.response = { status: 404 };
+    mockedAxios.post.mockRejectedValueOnce(err404);
+    
+    // Simulate success on standard fallback path
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { meta: { rc: 'ok' } }
+    });
+
+    const client = new UnifiClient(config);
+    const success = await client.authorizeGuest('00:11:22:33:44:55', 1440);
+    expect(success).toBe(true);
+  });
 });

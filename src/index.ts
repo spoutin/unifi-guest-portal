@@ -6,7 +6,7 @@ import { SlackIntegration } from './slack';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.0-alpha.2';
+export const appVersion = '1.0.0-alpha.3';
 
 const parsedPort = parseInt(process.env.PORTAL_PORT || process.env.PORT || '3000', 10);
 const port = isNaN(parsedPort) ? 3000 : parsedPort;

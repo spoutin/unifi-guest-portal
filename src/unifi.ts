@@ -39,13 +39,29 @@ export class UnifiClient {
   public async authorizeGuest(mac: string, minutes: number): Promise<boolean> {
     try {
       await this.login();
-      const endpoint = `/api/s/${this.config.site}/cmd/stamgr`;
-      const response = await this.client.post(endpoint, {
-        cmd: 'authorize-guest',
-        mac: mac.toLowerCase(),
-        minutes: minutes
-      });
-      return response.data?.meta?.rc === 'ok';
+      
+      // Try with modern UniFi OS /proxy/network prefix first
+      let endpoint = `/proxy/network/api/s/${this.config.site}/cmd/stamgr`;
+      try {
+        const response = await this.client.post(endpoint, {
+          cmd: 'authorize-guest',
+          mac: mac.toLowerCase(),
+          minutes: minutes
+        });
+        return response.data?.meta?.rc === 'ok';
+      } catch (err: any) {
+        // If modern prefix is Not Found, fallback to standard standalone api path
+        if (err.response?.status === 404) {
+          endpoint = `/api/s/${this.config.site}/cmd/stamgr`;
+          const response = await this.client.post(endpoint, {
+            cmd: 'authorize-guest',
+            mac: mac.toLowerCase(),
+            minutes: minutes
+          });
+          return response.data?.meta?.rc === 'ok';
+        }
+        throw err;
+      }
     } catch (err) {
       console.error('UniFi authorization failed:', err);
       return false;
