@@ -30,6 +30,10 @@ export class UnifiClient {
     if (cookies) {
       this.client.defaults.headers.common['Cookie'] = cookies.join('; ');
     }
+    const csrfToken = res.headers['x-csrf-token'];
+    if (csrfToken) {
+      this.client.defaults.headers.common['x-csrf-token'] = csrfToken;
+    }
   }
 
   public async authorizeGuest(mac: string, minutes: number): Promise<boolean> {
