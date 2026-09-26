@@ -7,7 +7,20 @@ import { logger } from './logger';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.0';
+export const appVersion = '1.0.1';
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error(`Unhandled Rejection: ${reason?.stack || reason}`);
+});
+
+process.on('uncaughtException', (err: any) => {
+  if (err?.message?.includes("Unhandled event 'server explicit disconnect'")) {
+    logger.warn(`Handled Slack Socket Mode reconnect glitch gracefully: ${err.message}`);
+    return;
+  }
+  logger.error(`Uncaught Exception: ${err?.stack || err}`);
+  process.exit(1);
+});
 
 const parsedPort = parseInt(process.env.PORTAL_PORT || process.env.PORT || '3000', 10);
 const port = isNaN(parsedPort) ? 3000 : parsedPort;
