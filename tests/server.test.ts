@@ -89,4 +89,72 @@ describe('Web Server API', () => {
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('Request not found');
   });
+
+  describe('Device Onboarding API (/api/onboard)', () => {
+    it('should return 400 if MAC is missing', async () => {
+      const res = await request(app).post('/api/onboard').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('MAC address is required');
+    });
+
+    it('should return 400 if MAC is invalid', async () => {
+      const res = await request(app).post('/api/onboard').send({ mac: 'not-a-mac' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Invalid MAC address format');
+    });
+
+    it('should return 503 if unifi client is not configured', async () => {
+      const res = await request(app).post('/api/onboard').send({ mac: '11:22:33:44:55:66' });
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe('UniFi controller integration not available');
+    });
+
+    it('should authorize device for onboarding when unifi client is present', async () => {
+      const mockUnifi = {
+        authorizeGuest: jest.fn().mockResolvedValue(true)
+      } as any;
+      const customApp = createServer(store, {
+        unifi: mockUnifi,
+        onboardDuration: 5,
+        onboardUrl: 'http://wifi.int.spoutin.org'
+      });
+
+      const res = await request(customApp)
+        .post('/api/onboard')
+        .send({ mac: 'aa:bb:cc:dd:ee:ff' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.redirectUrl).toBe('http://wifi.int.spoutin.org');
+      expect(mockUnifi.authorizeGuest).toHaveBeenCalledWith('aa:bb:cc:dd:ee:ff', 5);
+    });
+
+    it('should return 500 if unifi controller reports failure', async () => {
+      const mockUnifi = {
+        authorizeGuest: jest.fn().mockResolvedValue(false)
+      } as any;
+      const customApp = createServer(store, { unifi: mockUnifi });
+
+      const res = await request(customApp)
+        .post('/api/onboard')
+        .send({ mac: 'aa:bb:cc:dd:ee:ff' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe('UniFi controller failed to authorize device');
+    });
+
+    it('should return 500 if unifi client throws an exception', async () => {
+      const mockUnifi = {
+        authorizeGuest: jest.fn().mockRejectedValue(new Error('Network error'))
+      } as any;
+      const customApp = createServer(store, { unifi: mockUnifi });
+
+      const res = await request(customApp)
+        .post('/api/onboard')
+        .send({ mac: 'aa:bb:cc:dd:ee:ff' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe('Failed to authorize device');
+    });
+  });
 });
