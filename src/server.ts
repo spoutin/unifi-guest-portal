@@ -90,9 +90,14 @@ export function createServer(store: Store, options: ServerOptions = {}) {
                 <a id="onboard-proceed-btn" href="${onboardUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 12px; background: #2563eb; color: white; border-radius: 4px; font-weight: bold; text-decoration: none; text-align: center;">
                   Open Device Enrollment Portal &rarr;
                 </a>
-                <p style="font-size: 0.8rem; color: #6b7280; text-align: center; margin-top: 10px;">
-                  If this window does not redirect automatically, tap the button above or open Chrome and visit <strong>wifi.int.spoutin.org</strong>.
-                </p>
+                <div style="font-size: 0.85rem; color: #4b5563; text-align: left; background: #f3f4f6; border-radius: 6px; padding: 12px; margin-top: 14px; line-height: 1.4;">
+                  <strong style="color: #111827;">Device Authorized for ${onboardDuration} Minutes</strong><br>
+                  If your browser didn't open automatically:
+                  <ul style="margin: 6px 0 0; padding-left: 18px;">
+                    <li>Tap the button above, or</li>
+                    <li>Tap the <strong>&#8942;</strong> menu (top right) &rarr; <strong>Use network as is</strong>, then open Chrome and visit <strong style="word-break: break-all;">${onboardUrl}</strong></li>
+                  </ul>
+                </div>
               </div>
             </div>
             <div id="denied-msg" class="hidden">
@@ -164,23 +169,27 @@ export function createServer(store: Store, options: ServerOptions = {}) {
                 const data = await res.json();
                 if (res.ok && data.success) {
                   const targetUrl = data.redirectUrl || "${onboardUrl}";
+                  const isAndroid = /Android/i.test(navigator.userAgent);
+                  const rawWithoutScheme = targetUrl.replace(/^https?:\/\//i, '');
+                  const scheme = targetUrl.startsWith('https:') ? 'https' : 'http';
+                  const intentUrl = 'intent://' + rawWithoutScheme + '#Intent;scheme=' + scheme + ';action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end';
+                  const launchUrl = isAndroid ? intentUrl : targetUrl;
+
                   document.getElementById('loader').classList.add('hidden');
                   document.getElementById('approved-msg').classList.remove('hidden');
-                  document.getElementById('approved-text').textContent = 'Setup window authorized for ${onboardDuration} minutes!';
+                  document.getElementById('approved-text').textContent = 'Network Authorized for ${onboardDuration} Minutes!';
                   
                   const proceedContainer = document.getElementById('onboard-proceed-container');
                   if (proceedContainer) {
                     proceedContainer.classList.remove('hidden');
                     const proceedBtn = document.getElementById('onboard-proceed-btn');
-                    if (proceedBtn) proceedBtn.href = targetUrl;
+                    if (proceedBtn) proceedBtn.href = launchUrl;
                   }
 
-                  // Attempt immediate redirect
+                  // Attempt immediate browser launch
                   try {
-                    window.location.replace(targetUrl);
-                  } catch (err) {
-                    window.location.href = targetUrl;
-                  }
+                    window.location.href = launchUrl;
+                  } catch (err) {}
                 } else {
                   throw new Error(data.error || 'Failed to authorize device');
                 }
@@ -303,26 +312,38 @@ export function createServer(store: Store, options: ServerOptions = {}) {
           <!DOCTYPE html>
           <html>
           <head>
-            <meta http-equiv="refresh" content="0; url=${escapeHtml(redirectUrl)}">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Opening Device Enrollment...</title>
+            <title>Device Authorized</title>
             <style>
               body { font-family: -apple-system, system-ui, sans-serif; background: #f3f4f6; color: #1f2937; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-              .btn { display: block; width: 100%; padding: 12px; background: #2563eb; color: white; border-radius: 4px; font-weight: bold; text-decoration: none; margin-top: 20px; box-sizing: border-box; }
+              .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 100%; max-width: 420px; box-sizing: border-box; }
+              .btn { display: block; width: 100%; padding: 12px; background: #2563eb; color: white; border-radius: 4px; font-weight: bold; text-decoration: none; margin-top: 15px; box-sizing: border-box; text-align: center; }
             </style>
             <script>
-              try { window.location.replace("${redirectUrl}"); } catch (e) { window.location.href = "${redirectUrl}"; }
+              var targetUrl = "${redirectUrl}";
+              var isAndroid = /Android/i.test(navigator.userAgent);
+              var raw = targetUrl.replace(/^https?:\\/\\//i, '');
+              var scheme = targetUrl.indexOf('https:') === 0 ? 'https' : 'http';
+              var launchUrl = isAndroid ? ('intent://' + raw + '#Intent;scheme=' + scheme + ';action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end') : targetUrl;
+              window.onload = function() {
+                var btn = document.getElementById('launch-btn');
+                if (btn) btn.href = launchUrl;
+                try { window.location.href = launchUrl; } catch(e){}
+              };
             </script>
           </head>
           <body>
             <div class="card">
-              <h2 style="color: #1e3a8a; margin-top: 0;">Device Authorized!</h2>
-              <p>Your device has been authorized for ${duration} minutes.</p>
-              <a href="${escapeHtml(redirectUrl)}" class="btn">Open Enrollment Portal &rarr;</a>
-              <p style="font-size: 0.8rem; color: #6b7280; margin-top: 15px;">
-                If you are not redirected automatically, tap the button above or visit <strong>wifi.int.spoutin.org</strong> in your browser.
-              </p>
+              <h2 style="color: #1e3a8a; margin-top: 0; text-align: center;">Device Authorized!</h2>
+              <p style="text-align: center;">Your device has been granted <strong>${duration} minutes</strong> of access to complete certificate enrollment.</p>
+              <a id="launch-btn" href="${escapeHtml(redirectUrl)}" class="btn">Open Enrollment Portal &rarr;</a>
+              <div style="font-size: 0.85rem; color: #4b5563; text-align: left; background: #f3f4f6; border-radius: 6px; padding: 12px; margin-top: 15px; line-height: 1.4;">
+                <strong style="color: #111827;">If your browser did not open:</strong>
+                <ul style="margin: 6px 0 0; padding-left: 18px;">
+                  <li>Tap the button above, or</li>
+                  <li>Tap <strong>&#8942;</strong> (top right) &rarr; <strong>Use network as is</strong>, then open Chrome and visit <strong style="word-break: break-all;">${escapeHtml(redirectUrl)}</strong></li>
+                </ul>
+              </div>
             </div>
           </body>
           </html>

@@ -189,6 +189,7 @@ describe('Web Server API', () => {
       expect(res.text).toContain('Device Authorized!');
       expect(res.text).toContain('http://wifi.int.spoutin.org');
       expect(res.text).toContain('Open Enrollment Portal');
+      expect(res.text).toContain('intent://');
       expect(mockUnifi.authorizeGuest).toHaveBeenCalledWith('aa:bb:cc:dd:ee:ff', 5);
     });
 
