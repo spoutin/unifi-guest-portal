@@ -157,4 +157,51 @@ describe('Web Server API', () => {
       expect(res.body.error).toBe('Failed to authorize device');
     });
   });
+
+  describe('Direct Onboarding Route (GET /guest/s/:site/onboard)', () => {
+    it('should return 400 if MAC is missing or invalid', async () => {
+      const res1 = await request(app).get('/guest/s/default/onboard');
+      expect(res1.status).toBe(400);
+
+      const res2 = await request(app).get('/guest/s/default/onboard?id=bad-mac');
+      expect(res2.status).toBe(400);
+    });
+
+    it('should return 503 if unifi client is not configured', async () => {
+      const res = await request(app).get('/guest/s/default/onboard?id=11:22:33:44:55:66');
+      expect(res.status).toBe(503);
+    });
+
+    it('should render redirect and button when unifi authorizes successfully', async () => {
+      const mockUnifi = {
+        authorizeGuest: jest.fn().mockResolvedValue(true)
+      } as any;
+      const customApp = createServer(store, {
+        unifi: mockUnifi,
+        onboardDuration: 5,
+        onboardUrl: 'http://wifi.int.spoutin.org'
+      });
+
+      const res = await request(customApp)
+        .get('/guest/s/default/onboard?id=aa:bb:cc:dd:ee:ff');
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('Device Authorized!');
+      expect(res.text).toContain('http://wifi.int.spoutin.org');
+      expect(res.text).toContain('Open Enrollment Portal');
+      expect(mockUnifi.authorizeGuest).toHaveBeenCalledWith('aa:bb:cc:dd:ee:ff', 5);
+    });
+
+    it('should return 500 if unifi fails to authorize', async () => {
+      const mockUnifi = {
+        authorizeGuest: jest.fn().mockResolvedValue(false)
+      } as any;
+      const customApp = createServer(store, { unifi: mockUnifi });
+
+      const res = await request(customApp)
+        .get('/guest/s/default/onboard?id=aa:bb:cc:dd:ee:ff');
+
+      expect(res.status).toBe(500);
+    });
+  });
 });

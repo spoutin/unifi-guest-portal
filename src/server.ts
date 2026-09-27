@@ -29,6 +29,7 @@ export function createServer(store: Store, options: ServerOptions = {}) {
 
   // Captive Portal Splash Landing
   app.get('/guest/s/:site/', (req, res) => {
+    const site = escapeHtml(req.params.site || 'default');
     const mac = escapeHtml((req.query.id as string) || '');
     const ap = escapeHtml((req.query.ap as string) || '');
     const url = escapeHtml((req.query.url as string) || '');
@@ -85,6 +86,14 @@ export function createServer(store: Store, options: ServerOptions = {}) {
             </div>
             <div id="approved-msg" class="hidden">
               <p id="approved-text" style="color: green; text-align: center; font-weight: bold;">Access Approved! Connecting you now...</p>
+              <div id="onboard-proceed-container" class="hidden" style="text-align: center; margin-top: 16px;">
+                <a id="onboard-proceed-btn" href="${onboardUrl}" style="display: block; width: 100%; box-sizing: border-box; padding: 12px; background: #2563eb; color: white; border-radius: 4px; font-weight: bold; text-decoration: none; text-align: center;">
+                  Open Device Enrollment Portal &rarr;
+                </a>
+                <p style="font-size: 0.8rem; color: #6b7280; text-align: center; margin-top: 10px;">
+                  If this window does not redirect automatically, tap the button above or open Chrome and visit <strong>wifi.int.spoutin.org</strong>.
+                </p>
+              </div>
             </div>
             <div id="denied-msg" class="hidden">
               <p style="color: red; text-align: center; font-weight: bold;">Access Denied. Your request was rejected<span id="denied-admin"> by an administrator</span>.</p>
@@ -95,7 +104,7 @@ export function createServer(store: Store, options: ServerOptions = {}) {
             </div>
           </div>
           <div class="footer-link">
-            <a href="${onboardUrl}" id="onboard-link">Device Onboarding</a>
+            <a href="/guest/s/${site}/onboard?id=${mac}" id="onboard-link">Device Onboarding</a>
           </div>
         </div>
 
@@ -154,12 +163,24 @@ export function createServer(store: Store, options: ServerOptions = {}) {
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
+                  const targetUrl = data.redirectUrl || "${onboardUrl}";
                   document.getElementById('loader').classList.add('hidden');
                   document.getElementById('approved-msg').classList.remove('hidden');
-                  document.getElementById('approved-text').textContent = 'Setup window authorized! Opening enrollment portal...';
-                  setTimeout(() => {
-                    window.location.href = data.redirectUrl || "${onboardUrl}";
-                  }, 1500);
+                  document.getElementById('approved-text').textContent = 'Setup window authorized for ${onboardDuration} minutes!';
+                  
+                  const proceedContainer = document.getElementById('onboard-proceed-container');
+                  if (proceedContainer) {
+                    proceedContainer.classList.remove('hidden');
+                    const proceedBtn = document.getElementById('onboard-proceed-btn');
+                    if (proceedBtn) proceedBtn.href = targetUrl;
+                  }
+
+                  // Attempt immediate redirect
+                  try {
+                    window.location.replace(targetUrl);
+                  } catch (err) {
+                    window.location.href = targetUrl;
+                  }
                 } else {
                   throw new Error(data.error || 'Failed to authorize device');
                 }
@@ -181,6 +202,8 @@ export function createServer(store: Store, options: ServerOptions = {}) {
               document.getElementById('status-title').textContent = 'Access Request Sent';
               document.getElementById('loader-msg').textContent = 'Please wait while an admin approves your request...';
               document.getElementById('approved-text').textContent = 'Access Approved! Connecting you now...';
+              const proceedContainer = document.getElementById('onboard-proceed-container');
+              if (proceedContainer) proceedContainer.classList.add('hidden');
             });
           }
 
@@ -241,6 +264,87 @@ export function createServer(store: Store, options: ServerOptions = {}) {
     } catch (err: any) {
       logger.error(`Exception during onboarding authorization for MAC ${mac}: ${err.message || err}`);
       return res.status(500).json({ error: 'Failed to authorize device' });
+    }
+  });
+
+  // Direct Onboarding Navigation Route (native browser navigation with immediate redirect & fallback button)
+  app.get('/guest/s/:site/onboard', async (req, res) => {
+    const site = escapeHtml(req.params.site || 'default');
+    const mac = (req.query.id as string) || (req.query.mac as string) || '';
+    const redirectUrl = options.onboardUrl || 'http://wifi.int.spoutin.org';
+    const duration = options.onboardDuration || 5;
+
+    const macRegex = /^([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})$/;
+    if (!mac || !macRegex.test(mac)) {
+      return res.status(400).send(`
+        <!DOCTYPE html>
+        <html><body>
+          <p style="color:red;font-family:sans-serif;">Missing or invalid MAC address.</p>
+          <p><a href="/guest/s/${site}/">Return to Portal</a></p>
+        </body></html>
+      `);
+    }
+
+    if (!options.unifi) {
+      return res.status(503).send(`
+        <!DOCTYPE html>
+        <html><body>
+          <p style="color:red;font-family:sans-serif;">UniFi controller integration not available.</p>
+          <p><a href="/guest/s/${site}/">Return to Portal</a></p>
+        </body></html>
+      `);
+    }
+
+    try {
+      logger.info(`Authorizing temporary ${duration}-minute onboarding access for MAC: ${mac} via direct route`);
+      const success = await options.unifi.authorizeGuest(mac, duration);
+      if (success) {
+        return res.send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=${escapeHtml(redirectUrl)}">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Opening Device Enrollment...</title>
+            <style>
+              body { font-family: -apple-system, system-ui, sans-serif; background: #f3f4f6; color: #1f2937; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+              .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+              .btn { display: block; width: 100%; padding: 12px; background: #2563eb; color: white; border-radius: 4px; font-weight: bold; text-decoration: none; margin-top: 20px; box-sizing: border-box; }
+            </style>
+            <script>
+              try { window.location.replace("${redirectUrl}"); } catch (e) { window.location.href = "${redirectUrl}"; }
+            </script>
+          </head>
+          <body>
+            <div class="card">
+              <h2 style="color: #1e3a8a; margin-top: 0;">Device Authorized!</h2>
+              <p>Your device has been authorized for ${duration} minutes.</p>
+              <a href="${escapeHtml(redirectUrl)}" class="btn">Open Enrollment Portal &rarr;</a>
+              <p style="font-size: 0.8rem; color: #6b7280; margin-top: 15px;">
+                If you are not redirected automatically, tap the button above or visit <strong>wifi.int.spoutin.org</strong> in your browser.
+              </p>
+            </div>
+          </body>
+          </html>
+        `);
+      } else {
+        return res.status(500).send(`
+          <!DOCTYPE html>
+          <html><body>
+            <p style="color:red;font-family:sans-serif;">UniFi controller failed to authorize device.</p>
+            <p><a href="/guest/s/${site}/">Return to Portal</a></p>
+          </body></html>
+        `);
+      }
+    } catch (err: any) {
+      logger.error(`Exception during direct onboarding for MAC ${mac}: ${err.message || err}`);
+      return res.status(500).send(`
+        <!DOCTYPE html>
+        <html><body>
+          <p style="color:red;font-family:sans-serif;">Failed to authorize device.</p>
+          <p><a href="/guest/s/${site}/">Return to Portal</a></p>
+        </body></html>
+      `);
     }
   });
 
