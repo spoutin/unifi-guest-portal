@@ -43,6 +43,9 @@ export function createServer(store: Store) {
           #loader { text-align: center; }
           .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2563eb; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
           @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          .footer-link { margin-top: 24px; text-align: center; }
+          .footer-link a { color: #9ca3af; font-size: 0.8rem; text-decoration: none; }
+          .footer-link a:hover { color: #6b7280; text-decoration: underline; }
         </style>
       </head>
       <body>
@@ -76,6 +79,9 @@ export function createServer(store: Store) {
             <div id="denied-msg" class="hidden">
               <p style="color: red; text-align: center; font-weight: bold;">Access Denied. Your request was rejected<span id="denied-admin"> by an administrator</span>.</p>
             </div>
+          </div>
+          <div class="footer-link">
+            <a href="http://wifi.int.spoutin.org" target="_blank" rel="noopener noreferrer">Device Onboarding</a>
           </div>
         </div>
 

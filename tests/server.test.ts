@@ -32,6 +32,8 @@ describe('Web Server API', () => {
     expect(res.text).toContain('value="11:22:33:44:55:66"');
     expect(res.text).toContain('value="ap-1"');
     expect(res.text).toContain('value="http://apple.com"');
+    expect(res.text).toContain('href="http://wifi.int.spoutin.org"');
+    expect(res.text).toContain('Device Onboarding');
   });
 
   it('should escape HTML special characters to prevent reflected XSS', async () => {

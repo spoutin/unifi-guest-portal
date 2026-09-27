@@ -7,7 +7,7 @@ import { logger } from './logger';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.1';
+export const appVersion = '1.0.2';
 
 process.on('unhandledRejection', (reason: any) => {
   logger.error(`Unhandled Rejection: ${reason?.stack || reason}`);
