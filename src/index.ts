@@ -7,7 +7,7 @@ import { logger } from './logger';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.5';
+export const appVersion = '1.0.6';
 
 process.on('unhandledRejection', (reason: any) => {
   logger.error(`Unhandled Rejection: ${reason?.stack || reason}`);
@@ -28,10 +28,6 @@ const port = isNaN(parsedPort) ? 3000 : parsedPort;
 const parsedGuestAuthDuration = parseInt(process.env.GUEST_AUTH_DURATION || '1440', 10);
 const guestAuthDuration = isNaN(parsedGuestAuthDuration) ? 1440 : parsedGuestAuthDuration;
 
-const parsedOnboardDuration = parseInt(process.env.ONBOARD_AUTH_DURATION || '5', 10);
-const onboardDuration = isNaN(parsedOnboardDuration) ? 5 : parsedOnboardDuration;
-const onboardUrl = process.env.ONBOARD_URL || 'http://wifi.int.spoutin.org';
-
 const unifi = new UnifiClient({
   url: process.env.UNIFI_CONTROLLER_URL || '',
   username: process.env.UNIFI_USERNAME || '',
@@ -47,11 +43,7 @@ const slack = new SlackIntegration({
   guestAuthDuration
 }, store, unifi);
 
-const app = createServer(store, {
-  unifi,
-  onboardDuration,
-  onboardUrl
-});
+const app = createServer(store);
 
 // Hook guest_registered event to trigger Slack message
 (app as any).on('guest_registered', async (request: GuestRequest) => {
