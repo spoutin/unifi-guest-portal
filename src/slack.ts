@@ -96,6 +96,10 @@ export class SlackIntegration {
       // Run heavy UniFi and network response tasks asynchronously in the background
       // to guarantee the Slack ack() frame is dispatched and received instantly (within 3s)
       const task = (async () => {
+        const guestReq = this.store.getRequestByMac(mac);
+        const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
+        const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
+
         // Authorize on UniFi (defaulting to 24 hours / 1440 mins)
         const duration = this.config.guestAuthDuration || 1440;
         const success = await this.unifi.authorizeGuest(mac, duration);
@@ -110,7 +114,7 @@ export class SlackIntegration {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `✅ *WiFi Request Approved*\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* Authorized successfully`
+                  text: `✅ *WiFi Request Approved*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* Authorized successfully`
                 }
               }
             ]
@@ -125,7 +129,7 @@ export class SlackIntegration {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `⚠️ *WiFi Approval Failed*\n*MAC Address:* \`${mac}\`\n*Attempted By:* @${admin}\n*Error:* Could not authorize client on the UniFi Controller. Check the container's logs (\`journalctl -u unifi-guest-portal\`) for timing details.`
+                  text: `⚠️ *WiFi Approval Failed*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Attempted By:* @${admin}\n*Error:* Could not authorize client on the UniFi Controller. Check the container's logs (\`journalctl -u unifi-guest-portal\`) for timing details.`
                 }
               }
             ]
@@ -149,6 +153,10 @@ export class SlackIntegration {
 
       // Run asynchronously in background to prevent Slack timeout
       const task = (async () => {
+        const guestReq = this.store.getRequestByMac(mac);
+        const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
+        const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
+
         this.store.updateRequestStatus(mac, 'denied', admin);
         logger.info(`MAC ${mac} was denied Wi-Fi access by @${admin}.`);
 
@@ -159,7 +167,7 @@ export class SlackIntegration {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `❌ *WiFi Request Denied*\n*MAC Address:* \`${mac}\`\n*Denied By:* @${admin}`
+                text: `❌ *WiFi Request Denied*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Denied By:* @${admin}`
               }
             }
           ]

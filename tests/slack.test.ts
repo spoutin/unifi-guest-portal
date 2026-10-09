@@ -106,6 +106,8 @@ describe('SlackIntegration', () => {
     const respondArgs = respond.mock.calls[0][0];
     expect(respondArgs.text).toContain(`Approved guest ${mac}`);
     expect(respondArgs.blocks[0].text.text).toContain('✅ *WiFi Request Approved*');
+    expect(respondArgs.blocks[0].text.text).toContain('*Name:* John Doe');
+    expect(respondArgs.blocks[0].text.text).toContain('*Reason:* Business meeting');
     expect(respondArgs.blocks[0].text.text).toContain('@admin_user');
     expect(respondArgs.blocks[0].text.text).toContain('Authorized');
   });
@@ -130,6 +132,8 @@ describe('SlackIntegration', () => {
     expect(respond).toHaveBeenCalledTimes(1);
     const respondArgs = respond.mock.calls[0][0];
     expect(respondArgs.blocks[0].text.text).toContain('Failed');
+    expect(respondArgs.blocks[0].text.text).toContain('*Name:* John Doe');
+    expect(respondArgs.blocks[0].text.text).toContain('*Reason:* Business');
   });
 
   it('should handle deny button click, update store status and respond with denied message', async () => {
@@ -151,6 +155,8 @@ describe('SlackIntegration', () => {
     const respondArgs = respond.mock.calls[0][0];
     expect(respondArgs.text).toContain(`Denied guest ${mac}`);
     expect(respondArgs.blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
+    expect(respondArgs.blocks[0].text.text).toContain('*Name:* John Doe');
+    expect(respondArgs.blocks[0].text.text).toContain('*Reason:* Business meeting');
     expect(respondArgs.blocks[0].text.text).toContain('@admin_user');
   });
 
@@ -178,5 +184,24 @@ describe('SlackIntegration', () => {
 
     expect(ack).toHaveBeenCalledTimes(1);
     expect(authorizeSpy).toHaveBeenCalledWith(mac, 480);
+  });
+
+  it('should preserve and escape guest name and reason in approval and denial responses', async () => {
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', '<Alice> & Co', 'Coffee & <Chat>');
+
+    jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = { user: { name: 'admin_user' } };
+
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({ ack, action, body, respond });
+    await (slack as any).app.lastActionTask;
+
+    const approveRespondArgs = respond.mock.calls[0][0];
+    expect(approveRespondArgs.blocks[0].text.text).toContain('*Name:* &lt;Alice&gt; &amp; Co');
+    expect(approveRespondArgs.blocks[0].text.text).toContain('*Reason:* Coffee &amp; &lt;Chat&gt;');
   });
 });
