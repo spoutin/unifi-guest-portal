@@ -17,6 +17,15 @@ export interface SlackConfig {
   guestAuthDuration?: number;
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return `${days} ${days === 1 ? 'day' : 'days'}`;
+  }
+  const hours = Math.round(minutes / 60);
+  return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+}
+
 export class SlackIntegration {
   private app: App;
   private config: SlackConfig;
@@ -45,6 +54,8 @@ export class SlackIntegration {
   public async postApprovalMessage(request: GuestRequest): Promise<void> {
     const escapedName = escapeSlack(request.name);
     const escapedReason = escapeSlack(request.reason);
+    const durationMinutes = request.durationMinutes || this.config.guestAuthDuration || 1440;
+    const durationLabel = formatDuration(durationMinutes);
 
     logger.info(`Posting guest Wi-Fi approval request to Slack for MAC: ${request.mac}`);
     await this.app.client.chat.postMessage({
@@ -55,13 +66,26 @@ export class SlackIntegration {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*New WiFi Access Request*\n*Name:* ${escapedName}\n*Reason:* ${escapedReason}\n*MAC Address:* \`${request.mac}\``
+            text: `*New WiFi Access Request*\n*Name:* ${escapedName}\n*Reason:* ${escapedReason}\n*MAC Address:* \`${request.mac}\`\n*Requested Duration:* ${durationLabel}`
           }
         },
         {
           type: 'actions',
           block_id: `approve_actions_${request.mac}`,
           elements: [
+            {
+              type: 'static_select',
+              action_id: 'duration_select',
+              placeholder: { type: 'plain_text', text: 'Duration' },
+              initial_option: {
+                text: { type: 'plain_text', text: durationLabel },
+                value: durationMinutes.toString()
+              },
+              options: [1, 2, 3, 4, 5, 6, 7].map(d => ({
+                text: { type: 'plain_text', text: `${d} ${d === 1 ? 'day' : 'days'}` },
+                value: (d * 1440).toString()
+              }))
+            },
             {
               type: 'button',
               action_id: 'approve_btn',
@@ -83,6 +107,22 @@ export class SlackIntegration {
   }
 
   private registerActions(): void {
+    // Duration Select Action Handler (Slack override before approval)
+    this.app.action('duration_select', async ({ ack, action }: any) => {
+      await ack();
+      const selectedValue = action?.selected_option?.value;
+      const blockId = action?.block_id || '';
+      const macMatch = blockId.match(/^approve_actions_(.+)$/);
+      if (selectedValue && macMatch) {
+        const mac = macMatch[1];
+        const newMinutes = parseInt(selectedValue, 10);
+        if (!isNaN(newMinutes)) {
+          this.store.updateRequestDuration(mac, newMinutes);
+          logger.info(`Updated requested duration for MAC: ${mac} to ${newMinutes} minutes via Slack select`);
+        }
+      }
+    });
+
     // Approve Button Action Handler
     this.app.action('approve_btn', async ({ ack, action, body, respond }) => {
       await ack();
@@ -100,13 +140,14 @@ export class SlackIntegration {
         const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
         const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
 
-        // Authorize on UniFi (defaulting to 24 hours / 1440 mins)
-        const duration = this.config.guestAuthDuration || 1440;
+        // Authorize on UniFi (using request's durationMinutes or config fallback)
+        const duration = (guestReq && guestReq.durationMinutes !== undefined) ? guestReq.durationMinutes : (this.config.guestAuthDuration || 1440);
+        const durationLine = `\n*Duration:* ${formatDuration(duration)}`;
         const success = await this.unifi.authorizeGuest(mac, duration);
 
         if (success) {
           this.store.updateRequestStatus(mac, 'approved', admin);
-          logger.info(`MAC ${mac} successfully approved by @${admin} and authorized on the UniFi Controller.`);
+          logger.info(`MAC ${mac} successfully approved by @${admin} for ${duration}m and authorized on the UniFi Controller.`);
           await respond({
             text: `Approved guest ${mac}`,
             blocks: [
@@ -114,7 +155,7 @@ export class SlackIntegration {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `✅ *WiFi Request Approved*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* Authorized successfully`
+                  text: `✅ *WiFi Request Approved*${nameLine}${reasonLine}${durationLine}\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* Authorized successfully`
                 }
               }
             ]

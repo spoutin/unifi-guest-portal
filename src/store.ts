@@ -4,6 +4,7 @@ export interface GuestRequest {
   originalUrl: string;
   name: string;
   reason: string;
+  durationMinutes?: number;
   status: 'pending' | 'approved' | 'denied';
   createdAt: number;
   processedBy?: string;
@@ -31,7 +32,7 @@ export class Store {
     }
   }
 
-  public createRequest(mac: string, ap: string, url: string, name: string, reason: string): GuestRequest {
+  public createRequest(mac: string, ap: string, url: string, name: string, reason: string, durationMinutes?: number): GuestRequest {
     const formattedMac = mac.toLowerCase();
     const request: GuestRequest = {
       mac: formattedMac,
@@ -39,6 +40,7 @@ export class Store {
       originalUrl: url,
       name,
       reason,
+      durationMinutes,
       status: 'pending',
       createdAt: Date.now()
     };
@@ -58,6 +60,14 @@ export class Store {
     if (processedBy) {
       req.processedBy = processedBy;
     }
+    return true;
+  }
+
+  public updateRequestDuration(mac: string, durationMinutes: number): boolean {
+    const formattedMac = mac.toLowerCase();
+    const req = this.requests.get(formattedMac);
+    if (!req) return false;
+    req.durationMinutes = durationMinutes;
     return true;
   }
 }

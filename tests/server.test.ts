@@ -18,9 +18,39 @@ describe('Web Server API', () => {
     
     expect(regRes.status).toBe(200);
     expect(regRes.body.status).toBe('pending');
+    expect(regRes.body.durationMinutes).toBe(1440);
 
     const statusRes = await request(app).get('/api/status/11:22:33:44:55:66');
     expect(statusRes.body.status).toBe('pending');
+  });
+
+  it('should accept duration in days between 1 and 7 and convert to minutes', async () => {
+    const regRes = await request(app)
+      .post('/api/register')
+      .send({ mac: '11:22:33:44:55:77', ap: 'ap-1', url: 'http://apple.com', name: 'Bob', reason: 'Developer', days: 3 });
+    
+    expect(regRes.status).toBe(200);
+    expect(regRes.body.durationMinutes).toBe(3 * 1440);
+  });
+
+  it('should return 400 if days is not between 1 and 7', async () => {
+    const resLow = await request(app)
+      .post('/api/register')
+      .send({ mac: '11:22:33:44:55:77', ap: 'ap-1', url: 'http://apple.com', name: 'Bob', reason: 'Developer', days: 0 });
+    expect(resLow.status).toBe(400);
+    expect(resLow.body.error).toBe('Duration must be between 1 and 7 days');
+
+    const resHigh = await request(app)
+      .post('/api/register')
+      .send({ mac: '11:22:33:44:55:77', ap: 'ap-1', url: 'http://apple.com', name: 'Bob', reason: 'Developer', days: 8 });
+    expect(resHigh.status).toBe(400);
+    expect(resHigh.body.error).toBe('Duration must be between 1 and 7 days');
+
+    const resInvalid = await request(app)
+      .post('/api/register')
+      .send({ mac: '11:22:33:44:55:77', ap: 'ap-1', url: 'http://apple.com', name: 'Bob', reason: 'Developer', days: 'invalid' });
+    expect(resInvalid.status).toBe(400);
+    expect(resInvalid.body.error).toBe('Duration must be between 1 and 7 days');
   });
 
   it('should render the captive portal splash landing with query parameters', async () => {

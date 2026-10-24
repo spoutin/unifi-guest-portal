@@ -63,6 +63,17 @@ export function createServer(store: Store) {
               <label for="reason">Reason for Visit</label>
               <input type="text" id="reason" required placeholder="Meeting with Marketing">
               
+              <label for="days">Access Duration</label>
+              <select id="days" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; box-sizing: border-box; background: white;">
+                <option value="1" selected>1 Day (24 hours)</option>
+                <option value="2">2 Days</option>
+                <option value="3">3 Days</option>
+                <option value="4">4 Days</option>
+                <option value="5">5 Days</option>
+                <option value="6">6 Days</option>
+                <option value="7">7 Days</option>
+              </select>
+              
               <button type="submit">Request Access</button>
             </form>
           </div>
@@ -94,11 +105,12 @@ export function createServer(store: Store) {
             const url = document.getElementById('url').value;
             const name = document.getElementById('name').value;
             const reason = document.getElementById('reason').value;
+            const days = parseInt(document.getElementById('days').value, 10);
 
             const res = await fetch('/api/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ mac, ap, url, name, reason })
+              body: JSON.stringify({ mac, ap, url, name, reason, days })
             });
 
             if (res.ok) {
@@ -137,7 +149,7 @@ export function createServer(store: Store) {
 
   // API Route: Register
   app.post('/api/register', (req, res) => {
-    const { mac, ap, url, name, reason } = req.body;
+    const { mac, ap, url, name, reason, days } = req.body;
     if (!mac || !name || !reason) {
       return res.status(400).json({ error: 'MAC, Name, and Reason are required' });
     }
@@ -151,7 +163,17 @@ export function createServer(store: Store) {
     if (reason.length > 250) {
       return res.status(400).json({ error: 'Reason must be 250 characters or less' });
     }
-    const request = store.createRequest(mac, ap, url, name, reason);
+
+    let durationMinutes = 1440;
+    if (days !== undefined && days !== null && days !== '') {
+      const parsedDays = Number(days);
+      if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 7) {
+        return res.status(400).json({ error: 'Duration must be between 1 and 7 days' });
+      }
+      durationMinutes = parsedDays * 1440;
+    }
+
+    const request = store.createRequest(mac, ap, url, name, reason, durationMinutes);
     app.emit('guest_registered', request); // Emit event for Slack integration
     res.json(request);
   });

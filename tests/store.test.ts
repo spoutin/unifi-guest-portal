@@ -5,6 +5,13 @@ describe('Store', () => {
     const store = new Store();
     const req = store.createRequest('00:aa:bb:cc:dd:ee', 'ap-1', 'http://example.com', 'Alice', 'Meeting');
     expect(req.status).toBe('pending');
+    expect(req.durationMinutes).toBeUndefined();
+
+    const customReq = store.createRequest('00:aa:bb:cc:dd:ef', 'ap-1', 'http://example.com', 'Bob', 'Meeting', 2880);
+    expect(customReq.durationMinutes).toBe(2880);
+
+    store.updateRequestDuration('00:aa:bb:cc:dd:ee', 4320);
+    expect(store.getRequestByMac('00:aa:bb:cc:dd:ee')?.durationMinutes).toBe(4320);
 
     const retrieved = store.getRequestByMac('00:aa:bb:cc:dd:ee');
     expect(retrieved?.name).toBe('Alice');

@@ -47,8 +47,8 @@ describe('SlackIntegration', () => {
     expect(mockActionCallbacks['deny_btn']).toBeDefined();
   });
 
-  it('should post an approval message with correct Block Kit blocks', async () => {
-    const request = store.createRequest('00:11:22:33:44:55', 'AP-1', 'http://original-url', 'John Doe', 'Business meeting');
+  it('should post an approval message with correct Block Kit blocks including duration and override dropdown', async () => {
+    const request = store.createRequest('00:11:22:33:44:55', 'AP-1', 'http://original-url', 'John Doe', 'Business meeting', 4320);
     await slack.postApprovalMessage(request);
 
     expect(mockPostMessage).toHaveBeenCalledTimes(1);
@@ -59,13 +59,55 @@ describe('SlackIntegration', () => {
     expect(postArgs.blocks[0].text.text).toContain('John Doe');
     expect(postArgs.blocks[0].text.text).toContain('Business meeting');
     expect(postArgs.blocks[0].text.text).toContain('00:11:22:33:44:55');
+    expect(postArgs.blocks[0].text.text).toContain('*Requested Duration:* 3 days');
     
     const actionsBlock = postArgs.blocks[1];
     expect(actionsBlock.block_id).toBe('approve_actions_00:11:22:33:44:55');
-    expect(actionsBlock.elements[0].action_id).toBe('approve_btn');
-    expect(actionsBlock.elements[0].value).toBe('00:11:22:33:44:55');
-    expect(actionsBlock.elements[1].action_id).toBe('deny_btn');
+    expect(actionsBlock.elements[0].action_id).toBe('duration_select');
+    expect(actionsBlock.elements[0].initial_option.value).toBe('4320');
+    expect(actionsBlock.elements[1].action_id).toBe('approve_btn');
     expect(actionsBlock.elements[1].value).toBe('00:11:22:33:44:55');
+    expect(actionsBlock.elements[2].action_id).toBe('deny_btn');
+    expect(actionsBlock.elements[2].value).toBe('00:11:22:33:44:55');
+  });
+
+  it('should allow overriding duration via duration_select action before approving', async () => {
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business meeting', 1440);
+
+    const authorizeSpy = jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+    const ack = jest.fn();
+    const respond = jest.fn();
+
+    // Trigger duration select action
+    const durationCallback = mockActionCallbacks['duration_select'];
+    expect(durationCallback).toBeDefined();
+    await durationCallback({
+      ack,
+      action: {
+        type: 'static_select',
+        selected_option: { value: '7200' },
+        block_id: `approve_actions_${mac}`
+      },
+      body: {}
+    });
+
+    expect(ack).toHaveBeenCalled();
+    expect(store.getRequestByMac(mac)?.durationMinutes).toBe(7200);
+
+    // Now click approve
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({
+      ack,
+      action: { type: 'button', value: mac },
+      body: { user: { name: 'admin_user' } },
+      respond
+    });
+    await (slack as any).app.lastActionTask;
+
+    expect(authorizeSpy).toHaveBeenCalledWith(mac, 7200);
+    const respondArgs = respond.mock.calls[0][0];
+    expect(respondArgs.blocks[0].text.text).toContain('*Duration:* 5 days');
   });
 
   it('should escape Slack special characters in guest-submitted fields to prevent injection', async () => {
