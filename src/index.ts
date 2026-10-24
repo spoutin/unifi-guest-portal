@@ -40,7 +40,9 @@ const slack = new SlackIntegration({
   botToken: process.env.SLACK_BOT_TOKEN || '',
   appToken: process.env.SLACK_APP_TOKEN || '',
   channelId: process.env.SLACK_CHANNEL_ID || '',
-  guestAuthDuration
+  guestAuthDuration,
+  pkiInternalUrl: process.env.PKI_INTERNAL_URL || 'http://127.0.0.1:8000',
+  internalApiSecret: process.env.INTERNAL_API_SECRET || ''
 }, store, unifi);
 
 const app = createServer(store);

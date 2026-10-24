@@ -246,4 +246,46 @@ describe('SlackIntegration', () => {
     expect(approveRespondArgs.blocks[0].text.text).toContain('*Name:* &lt;Alice&gt; &amp; Co');
     expect(approveRespondArgs.blocks[0].text.text).toContain('*Reason:* Coffee &amp; &lt;Chat&gt;');
   });
+
+  it('should notify PKI internal endpoint with X-Internal-Secret on successful approval if configured', async () => {
+    const axios = require('axios');
+    const axiosPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: { success: true } });
+
+    const pkiSlack = new SlackIntegration({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      channelId: 'C123',
+      pkiInternalUrl: 'http://127.0.0.1:8000',
+      internalApiSecret: 'super-secret-token'
+    }, store, unifi);
+
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'Alice', 'Visit', 1440);
+    jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = { user: { name: 'admin_user' } };
+
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({ ack, action, body, respond });
+    await (pkiSlack as any).app.lastActionTask;
+
+    expect(axiosPostSpy).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/api/internal/guest-authorized',
+      expect.objectContaining({
+        mac: '00:11:22:33:44:55',
+        name: 'Alice',
+        reason: 'Visit',
+        duration_minutes: 1440,
+        approved_by: 'admin_user'
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Internal-Secret': 'super-secret-token'
+        })
+      })
+    );
+  });
 });

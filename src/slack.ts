@@ -10,11 +10,15 @@ export function escapeSlack(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+import axios from 'axios';
+
 export interface SlackConfig {
   botToken: string;
   appToken: string;
   channelId: string;
   guestAuthDuration?: number;
+  pkiInternalUrl?: string;
+  internalApiSecret?: string;
 }
 
 function formatDuration(minutes: number): string {
@@ -148,6 +152,28 @@ export class SlackIntegration {
         if (success) {
           this.store.updateRequestStatus(mac, 'approved', admin);
           logger.info(`MAC ${mac} successfully approved by @${admin} for ${duration}m and authorized on the UniFi Controller.`);
+
+          // Notify PKI internal backend if configured
+          if (this.config.pkiInternalUrl) {
+            const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest-authorized`;
+            const now = Math.floor(Date.now() / 1000);
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (this.config.internalApiSecret) {
+              headers['X-Internal-Secret'] = this.config.internalApiSecret;
+            }
+            axios.post(endpoint, {
+              mac,
+              name: guestReq?.name || 'Unknown',
+              reason: guestReq?.reason || 'Guest Access',
+              duration_minutes: duration,
+              approved_by: admin,
+              approved_at: now,
+              expires_at: now + duration * 60
+            }, { headers, timeout: 5000 }).catch(err => {
+              logger.warn(`Failed to notify PKI internal endpoint: ${err.message || err}`);
+            });
+          }
+
           await respond({
             text: `Approved guest ${mac}`,
             blocks: [
