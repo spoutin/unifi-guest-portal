@@ -190,5 +190,33 @@ export function createServer(store: Store) {
     });
   });
 
+  // Internal route to update guest status remotely (from PKI admin dashboard)
+  app.post('/api/internal/guest/:mac/status', (req, res) => {
+    const expectedSecret = process.env.INTERNAL_API_SECRET;
+    const authHeader = req.headers.authorization;
+    const incomingSecret = (req.headers['x-internal-secret'] as string) || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '');
+    if (expectedSecret && incomingSecret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized internal request' });
+    }
+
+    const { status, processedBy, durationMinutes } = req.body;
+    if (status !== 'approved' && status !== 'denied') {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const mac = req.params.mac.toLowerCase();
+    const guestReq = store.getRequestByMac(mac);
+    if (!guestReq) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    if (durationMinutes) {
+      store.updateRequestDuration(mac, durationMinutes);
+    }
+    store.updateRequestStatus(mac, status, processedBy || 'Admin');
+    app.emit('guest_resolved_remotely', { mac, status, processedBy: processedBy || 'Admin', durationMinutes: guestReq.durationMinutes });
+    res.json({ success: true, mac, status });
+  });
+
   return app;
 }

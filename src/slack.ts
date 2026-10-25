@@ -62,7 +62,7 @@ export class SlackIntegration {
     const durationLabel = formatDuration(durationMinutes);
 
     logger.info(`Posting guest Wi-Fi approval request to Slack for MAC: ${request.mac}`);
-    await this.app.client.chat.postMessage({
+    const res = await this.app.client.chat.postMessage({
       channel: this.config.channelId,
       text: `New WiFi Guest Request from ${escapedName}`,
       blocks: [
@@ -108,6 +108,56 @@ export class SlackIntegration {
         }
       ]
     });
+    if (res && res.ts) {
+      (request as any).slackMessageTs = res.ts;
+    }
+  }
+
+  public async updateRemoteResolution(mac: string, status: 'approved' | 'denied', admin: string, durationMinutes?: number): Promise<void> {
+    const guestReq = this.store.getRequestByMac(mac);
+    const ts = (guestReq as any)?.slackMessageTs;
+    if (!ts) return;
+
+    const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
+    const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
+    const duration = durationMinutes || guestReq?.durationMinutes || this.config.guestAuthDuration || 1440;
+    const durationLine = `\n*Duration:* ${formatDuration(duration)}`;
+
+    try {
+      if (status === 'approved') {
+        await this.app.client.chat.update({
+          channel: this.config.channelId,
+          ts,
+          text: `Approved guest ${mac}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `✅ *WiFi Request Approved*${nameLine}${reasonLine}${durationLine}\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin} (Web Dashboard)\n*UniFi Status:* Authorized successfully`
+              }
+            }
+          ]
+        });
+      } else {
+        await this.app.client.chat.update({
+          channel: this.config.channelId,
+          ts,
+          text: `Denied guest ${mac}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `❌ *WiFi Request Denied*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Denied By:* @${admin} (Web Dashboard)`
+              }
+            }
+          ]
+        });
+      }
+    } catch (err: any) {
+      logger.warn(`Could not update Slack message for remotely resolved MAC ${mac}: ${err.message || err}`);
+    }
   }
 
   private registerActions(): void {

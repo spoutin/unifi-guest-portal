@@ -47,12 +47,40 @@ const slack = new SlackIntegration({
 
 const app = createServer(store);
 
-// Hook guest_registered event to trigger Slack message
+// Hook guest_registered event to trigger Slack message and forward to PKI dashboard
 (app as any).on('guest_registered', async (request: GuestRequest) => {
   try {
     await slack.postApprovalMessage(request);
   } catch (err: any) {
     logger.error(`Failed to post Slack approval message: ${err.message || err}`);
+  }
+
+  // Forward pending request to PKI internal backend
+  const pkiUrl = process.env.PKI_INTERNAL_URL || 'http://127.0.0.1:8000';
+  const secret = process.env.INTERNAL_API_SECRET || '';
+  if (pkiUrl) {
+    const endpoint = `${pkiUrl.replace(/\/+$/, '')}/api/internal/guest-requested`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (secret) headers['X-Internal-Secret'] = secret;
+
+    const axios = require('axios');
+    axios.post(endpoint, {
+      mac: request.mac,
+      name: request.name,
+      reason: request.reason,
+      duration_minutes: request.durationMinutes || 1440,
+      requested_at: Math.floor(request.createdAt / 1000)
+    }, { headers, timeout: 5000 }).catch((err: any) => {
+      logger.warn(`Failed to notify PKI of pending guest registration: ${err.message || err}`);
+    });
+  }
+});
+
+(app as any).on('guest_resolved_remotely', async (data: any) => {
+  try {
+    await slack.updateRemoteResolution(data.mac, data.status, data.processedBy, data.durationMinutes);
+  } catch (err: any) {
+    logger.warn(`Failed to update Slack for remotely resolved guest: ${err.message || err}`);
   }
 });
 
