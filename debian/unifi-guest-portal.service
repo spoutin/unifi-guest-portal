@@ -8,11 +8,17 @@ User=unifi-portal
 WorkingDirectory=/usr/share/unifi-guest-portal
 Environment="NODE_ENV=production"
 Environment="CONFIG_PATH=/etc/unifi-guest-portal/config.env"
+EnvironmentFile=/etc/unifi-guest-portal/config.env
+EnvironmentFile=-/run/unifi-guest-portal/secret.env
+
+RuntimeDirectory=unifi-guest-portal
+RuntimeDirectoryMode=0755
+
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5s
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=unifi-guest-portal
 
 [Install]
