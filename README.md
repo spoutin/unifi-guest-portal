@@ -146,6 +146,12 @@ To route clients through your new portal, apply these settings in your **UniFi C
 
 ---
 
+## 🛡️ Production & Security Deployment Guides
+
+*   **[Migrating Captive Portal to Dedicated Guest VLAN LXC](docs/deployment/guest-vlan-migration.md):** Complete guide and runbook for isolating `unifi-guest-portal` to a dedicated container on the Guest VLAN (VLAN 5), with Caddy reverse proxy, OpenBao Agent in-memory secrets (`/run/.../secret.env`), and firewall rules.
+
+---
+
 ## 🌐 Behind a Reverse Proxy (Optional - Caddy)
 
 To protect traffic and enable HTTPS without exposing public ports, you can compile Caddy with the **Cloudflare DNS plugin** using `xcaddy` to perform DNS-01 Let's Encrypt challenges.
