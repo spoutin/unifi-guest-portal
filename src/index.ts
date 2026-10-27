@@ -7,7 +7,13 @@ import { logger } from './logger';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.11';
+export const appVersion = '1.0.12';
+
+export const slackEnabled = process.env.SLACK_ENABLED !== 'false' && process.env.SLACK_ENABLED !== '0';
+
+if (!slackEnabled) {
+  logger.info('Slack integration is DISABLED (SLACK_ENABLED=' + process.env.SLACK_ENABLED + '). Skipping Slack client startup and notifications.');
+}
 
 process.on('unhandledRejection', (reason: any) => {
   logger.error(`Unhandled Rejection: ${reason?.stack || reason}`);
@@ -36,23 +42,28 @@ const unifi = new UnifiClient({
   apiKey: process.env.UNIFI_API_KEY || ''
 });
 
-const slack = new SlackIntegration({
+export const slack = new SlackIntegration({
   botToken: process.env.SLACK_BOT_TOKEN || '',
   appToken: process.env.SLACK_APP_TOKEN || '',
   channelId: process.env.SLACK_CHANNEL_ID || '',
   guestAuthDuration,
   pkiInternalUrl: process.env.PKI_INTERNAL_URL || 'http://127.0.0.1:8000',
-  internalApiSecret: process.env.INTERNAL_API_SECRET || ''
+  internalApiSecret: process.env.INTERNAL_API_SECRET || '',
+  enabled: slackEnabled
 }, store, unifi);
 
-const app = createServer(store);
+export const app = createServer(store);
 
 // Hook guest_registered event to trigger Slack message and forward to PKI dashboard
 (app as any).on('guest_registered', async (request: GuestRequest) => {
-  try {
-    await slack.postApprovalMessage(request);
-  } catch (err: any) {
-    logger.error(`Failed to post Slack approval message: ${err.message || err}`);
+  if (slackEnabled) {
+    try {
+      await slack.postApprovalMessage(request);
+    } catch (err: any) {
+      logger.error(`Failed to post Slack approval message: ${err.message || err}`);
+    }
+  } else {
+    logger.info('Slack notifications disabled. Skipping message dispatch for MAC: ' + request.mac);
   }
 
   // Forward pending request to PKI internal backend
@@ -77,6 +88,7 @@ const app = createServer(store);
 });
 
 (app as any).on('guest_resolved_remotely', async (data: any) => {
+  if (!slackEnabled) return;
   try {
     await slack.updateRemoteResolution(data.mac, data.status, data.processedBy, data.durationMinutes);
   } catch (err: any) {
@@ -86,11 +98,13 @@ const app = createServer(store);
 
 async function main() {
   // Start Slack client gracefully
-  try {
-    await slack.start();
-  } catch (err: any) {
-    logger.error('CRITICAL WARNING: Failed to start Slack Socket Mode client. Check that your SLACK_BOT_TOKEN (xoxb-...) and SLACK_APP_TOKEN (xapp-...) are set correctly inside /etc/unifi-guest-portal/config.env.');
-    logger.error(err.message || err);
+  if (slackEnabled) {
+    try {
+      await slack.start();
+    } catch (err: any) {
+      logger.error('CRITICAL WARNING: Failed to start Slack Socket Mode client. Check that your SLACK_BOT_TOKEN (xoxb-...) and SLACK_APP_TOKEN (xapp-...) are set correctly inside /etc/unifi-guest-portal/config.env.');
+      logger.error(err.message || err);
+    }
   }
 
   // Start Express server

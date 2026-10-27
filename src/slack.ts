@@ -19,6 +19,7 @@ export interface SlackConfig {
   guestAuthDuration?: number;
   pkiInternalUrl?: string;
   internalApiSecret?: string;
+  enabled?: boolean;
 }
 
 function formatDuration(minutes: number): string {
@@ -31,23 +32,46 @@ function formatDuration(minutes: number): string {
 }
 
 export class SlackIntegration {
-  private app: App;
+  private app?: App;
   private config: SlackConfig;
   private store: Store;
   private unifi: UnifiClient;
+  private enabled: boolean;
 
   constructor(config: SlackConfig, store: Store, unifi: UnifiClient) {
     this.config = config;
     this.store = store;
     this.unifi = unifi;
 
-    this.app = new App({
-      token: config.botToken,
-      appToken: config.appToken,
-      socketMode: true
-    });
+    const slackEnabled = config.enabled !== undefined
+      ? config.enabled
+      : (process.env.SLACK_ENABLED !== 'false' && process.env.SLACK_ENABLED !== '0');
 
-    this.registerActions();
+    this.enabled = slackEnabled;
+
+    if (!this.enabled) {
+      logger.info('Slack integration is disabled. Skipping Slack client initialization.');
+      return;
+    }
+
+    if (!config.botToken || !config.appToken) {
+      logger.warn('Slack botToken or appToken is missing. Disabling Slack integration.');
+      this.enabled = false;
+      return;
+    }
+
+    try {
+      this.app = new App({
+        token: config.botToken,
+        appToken: config.appToken,
+        socketMode: true
+      });
+
+      this.registerActions();
+    } catch (err: any) {
+      logger.error(`Failed to initialize Slack Bolt App: ${err.message || err}`);
+      this.enabled = false;
+    }
   }
 
   private getInternalApiHeaders(): Record<string, string> {
@@ -60,18 +84,28 @@ export class SlackIntegration {
   }
 
   public async start(): Promise<void> {
-    await this.app.start();
+    const app = this.app;
+    if (!this.enabled || !app) {
+      logger.info('Slack integration is disabled or not initialized; skipping start.');
+      return;
+    }
+    await app.start();
     logger.info('Slack Socket Mode client successfully connected.');
   }
 
   public async postApprovalMessage(request: GuestRequest): Promise<void> {
+    const app = this.app;
+    if (!this.enabled || !app) {
+      logger.info(`Slack notifications disabled. Skipping message dispatch for MAC: ${request.mac}`);
+      return;
+    }
     const escapedName = escapeSlack(request.name);
     const escapedReason = escapeSlack(request.reason);
     const durationMinutes = request.durationMinutes || this.config.guestAuthDuration || 1440;
     const durationLabel = formatDuration(durationMinutes);
 
     logger.info(`Posting guest Wi-Fi approval request to Slack for MAC: ${request.mac}`);
-    const res = await this.app.client.chat.postMessage({
+    const res = await app.client.chat.postMessage({
       channel: this.config.channelId,
       text: `New WiFi Guest Request from ${escapedName}`,
       blocks: [
@@ -123,6 +157,8 @@ export class SlackIntegration {
   }
 
   public async updateRemoteResolution(mac: string, status: 'approved' | 'denied', admin: string, durationMinutes?: number): Promise<void> {
+    const app = this.app;
+    if (!this.enabled || !app) return;
     const guestReq = this.store.getRequestByMac(mac);
     const ts = (guestReq as any)?.slackMessageTs;
     if (!ts) return;
@@ -134,7 +170,7 @@ export class SlackIntegration {
 
     try {
       if (status === 'approved') {
-        await this.app.client.chat.update({
+        await app.client.chat.update({
           channel: this.config.channelId,
           ts,
           text: `Approved guest ${mac}`,
@@ -149,7 +185,7 @@ export class SlackIntegration {
           ]
         });
       } else {
-        await this.app.client.chat.update({
+        await app.client.chat.update({
           channel: this.config.channelId,
           ts,
           text: `Denied guest ${mac}`,
@@ -170,8 +206,11 @@ export class SlackIntegration {
   }
 
   private registerActions(): void {
+    const app = this.app;
+    if (!app) return;
+
     // Duration Select Action Handler (Slack override before approval)
-    this.app.action('duration_select', async ({ ack, action }: any) => {
+    app.action('duration_select', async ({ ack, action }: any) => {
       await ack();
       const selectedValue = action?.selected_option?.value;
       const blockId = action?.block_id || '';
@@ -187,7 +226,7 @@ export class SlackIntegration {
     });
 
     // Approve Button Action Handler
-    this.app.action('approve_btn', async ({ ack, action, body, respond }) => {
+    app.action('approve_btn', async ({ ack, action, body, respond }) => {
       await ack();
       if (action.type !== 'button') return;
       const mac = action.value;
@@ -261,12 +300,12 @@ export class SlackIntegration {
         }
       })();
 
-      (this.app as any).lastActionTask = task;
+      (app as any).lastActionTask = task;
       task.catch(err => logger.error(`Error in Slack approve action background task: ${err}`));
     });
 
     // Deny Button Action Handler
-    this.app.action('deny_btn', async ({ ack, action, body, respond }) => {
+    app.action('deny_btn', async ({ ack, action, body, respond }) => {
       await ack();
       if (action.type !== 'button') return;
       const mac = action.value;
@@ -311,7 +350,7 @@ export class SlackIntegration {
         });
       })();
 
-      (this.app as any).lastActionTask = task;
+      (app as any).lastActionTask = task;
       task.catch(err => logger.error(`Error in Slack deny action background task: ${err}`));
     });
   }

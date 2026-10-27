@@ -117,6 +117,7 @@ sequenceDiagram
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token | `xoxb-abc123xyz` |
 | `SLACK_APP_TOKEN` | Slack App-Level Token (for Socket Mode) | `xapp-1-abc123xyz` |
 | `SLACK_CHANNEL_ID` | Slack Channel ID where approval notifications are sent | `C06A1B2C3D4` |
+| `SLACK_ENABLED` | Enable or disable Slack Socket Mode & notifications (Default: `true`) | `false` |
 | `UNIFI_CONTROLLER_URL`| URL of your UniFi OS controller | `https://10.0.0.11` |
 | `UNIFI_SITE` | Site ID in your controller (usually `default`) | `default` |
 | `UNIFI_API_KEY` | *(Recommended)* UniFi OS Local API Key (bypasses cookie login) | `your_local_api_key` |
