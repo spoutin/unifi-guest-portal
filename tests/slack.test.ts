@@ -247,7 +247,7 @@ describe('SlackIntegration', () => {
     expect(approveRespondArgs.blocks[0].text.text).toContain('*Reason:* Coffee &amp; &lt;Chat&gt;');
   });
 
-  it('should notify PKI internal endpoint with X-Internal-Secret on successful approval if configured', async () => {
+  it('should notify PKI internal endpoint with auth headers on successful approval if configured', async () => {
     const axios = require('axios');
     const axiosPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: { success: true } });
 
@@ -279,13 +279,120 @@ describe('SlackIntegration', () => {
         name: 'Alice',
         reason: 'Visit',
         duration_minutes: 1440,
-        approved_by: 'admin_user'
+        approved_by: 'admin_user',
+        approved_at: expect.any(Number),
+        expires_at: expect.any(Number)
       }),
       expect.objectContaining({
         headers: expect.objectContaining({
-          'X-Internal-Secret': 'super-secret-token'
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'super-secret-token',
+          'Authorization': 'Bearer super-secret-token'
         })
       })
     );
+
+    const payload = axiosPostSpy.mock.calls[0][1] as any;
+    expect(payload.expires_at).toBe(payload.approved_at + 1440 * 60);
+  });
+
+  it('should handle PKI notification error on approval without crashing Slack handler', async () => {
+    const axios = require('axios');
+    jest.spyOn(axios, 'post').mockRejectedValue(new Error('Network error to PKI'));
+
+    const pkiSlack = new SlackIntegration({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      channelId: 'C123',
+      pkiInternalUrl: 'http://127.0.0.1:8000',
+      internalApiSecret: 'super-secret-token'
+    }, store, unifi);
+
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'Alice', 'Visit', 1440);
+    jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = { user: { name: 'admin_user' } };
+
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({ ack, action, body, respond });
+    await (pkiSlack as any).app.lastActionTask;
+
+    expect(respond).toHaveBeenCalledTimes(1);
+    const respondArgs = respond.mock.calls[0][0];
+    expect(respondArgs.blocks[0].text.text).toContain('✅ *WiFi Request Approved*');
+  });
+
+  it('should notify PKI internal status endpoint with auth headers on denial if configured', async () => {
+    const axios = require('axios');
+    const axiosPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: { success: true } });
+
+    const pkiSlack = new SlackIntegration({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      channelId: 'C123',
+      pkiInternalUrl: 'http://127.0.0.1:8000',
+      internalApiSecret: 'super-secret-token'
+    }, store, unifi);
+
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'Bob', 'Visit', 1440);
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = { user: { name: 'admin_user' } };
+
+    const denyCallback = mockActionCallbacks['deny_btn'];
+    await denyCallback({ ack, action, body, respond });
+    await (pkiSlack as any).app.lastActionTask;
+
+    expect(axiosPostSpy).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/api/internal/guest/00:11:22:33:44:55/status',
+      {
+        status: 'denied',
+        processedBy: 'admin_user'
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'super-secret-token',
+          'Authorization': 'Bearer super-secret-token'
+        })
+      })
+    );
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0][0].blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
+  });
+
+  it('should handle PKI notification error on denial without crashing Slack handler', async () => {
+    const axios = require('axios');
+    jest.spyOn(axios, 'post').mockRejectedValue(new Error('Connection refused'));
+
+    const pkiSlack = new SlackIntegration({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      channelId: 'C123',
+      pkiInternalUrl: 'http://127.0.0.1:8000',
+      internalApiSecret: 'super-secret-token'
+    }, store, unifi);
+
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'Bob', 'Visit', 1440);
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = { user: { name: 'admin_user' } };
+
+    const denyCallback = mockActionCallbacks['deny_btn'];
+    await denyCallback({ ack, action, body, respond });
+    await (pkiSlack as any).app.lastActionTask;
+
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0][0].blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
   });
 });

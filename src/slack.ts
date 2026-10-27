@@ -50,6 +50,15 @@ export class SlackIntegration {
     this.registerActions();
   }
 
+  private getInternalApiHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.config.internalApiSecret) {
+      headers['X-Internal-Secret'] = this.config.internalApiSecret;
+      headers['Authorization'] = `Bearer ${this.config.internalApiSecret}`;
+    }
+    return headers;
+  }
+
   public async start(): Promise<void> {
     await this.app.start();
     logger.info('Slack Socket Mode client successfully connected.');
@@ -207,21 +216,19 @@ export class SlackIntegration {
           if (this.config.pkiInternalUrl) {
             const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest-authorized`;
             const now = Math.floor(Date.now() / 1000);
-            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-            if (this.config.internalApiSecret) {
-              headers['X-Internal-Secret'] = this.config.internalApiSecret;
-            }
-            axios.post(endpoint, {
-              mac,
-              name: guestReq?.name || 'Unknown',
-              reason: guestReq?.reason || 'Guest Access',
-              duration_minutes: duration,
-              approved_by: admin,
-              approved_at: now,
-              expires_at: now + duration * 60
-            }, { headers, timeout: 5000 }).catch(err => {
+            try {
+              await axios.post(endpoint, {
+                mac: guestReq?.mac || mac,
+                name: guestReq?.name || 'Unknown',
+                reason: guestReq?.reason || 'Guest Access',
+                duration_minutes: duration,
+                approved_by: admin,
+                approved_at: now,
+                expires_at: now + (duration * 60)
+              }, { headers: this.getInternalApiHeaders(), timeout: 5000 });
+            } catch (err: any) {
               logger.warn(`Failed to notify PKI internal endpoint: ${err.message || err}`);
-            });
+            }
           }
 
           await respond({
@@ -276,6 +283,19 @@ export class SlackIntegration {
 
         this.store.updateRequestStatus(mac, 'denied', admin);
         logger.info(`MAC ${mac} was denied Wi-Fi access by @${admin}.`);
+
+        // Notify PKI internal backend if configured
+        if (this.config.pkiInternalUrl) {
+          const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest/${mac}/status`;
+          try {
+            await axios.post(endpoint, {
+              status: 'denied',
+              processedBy: admin
+            }, { headers: this.getInternalApiHeaders(), timeout: 5000 });
+          } catch (err: any) {
+            logger.warn(`Failed to notify PKI internal deny endpoint: ${err.message || err}`);
+          }
+        }
 
         await respond({
           text: `Denied guest ${mac}`,
