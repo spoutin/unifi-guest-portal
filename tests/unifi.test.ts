@@ -111,8 +111,8 @@ describe('UnifiClient', () => {
       const client = new UnifiClient(config);
       const success = await client.setClientName('00:11:22:33:44:55', 'Alice');
       expect(success).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/s/default/rest/user?mac=00:11:22:33:44:55');
-      expect(mockedAxios.put).toHaveBeenCalledWith('/api/s/default/rest/user/user123', { name: 'Alice' });
+      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user?mac=00:11:22:33:44:55');
+      expect(mockedAxios.put).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user/user123', { name: 'Alice' });
     });
 
     it('should update active station name via upd/user endpoint if not in rest/user', async () => {
@@ -135,9 +135,9 @@ describe('UnifiClient', () => {
       });
       const success = await client.setClientName('00:11:22:33:44:55', 'Bob');
       expect(success).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/s/default/rest/user?mac=00:11:22:33:44:55');
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/s/default/stat/sta?mac=00:11:22:33:44:55');
-      expect(mockedAxios.post).toHaveBeenCalledWith('/api/s/default/upd/user/sta999', { name: 'Bob' });
+      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user?mac=00:11:22:33:44:55');
+      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/stat/sta?mac=00:11:22:33:44:55');
+      expect(mockedAxios.post).toHaveBeenCalledWith('/proxy/network/api/s/default/upd/user/sta999', { name: 'Bob' });
     });
 
     it('should create new user record via rest/user if not found in rest/user or stat/sta', async () => {
@@ -160,7 +160,7 @@ describe('UnifiClient', () => {
       });
       const success = await client.setClientName('AA:BB:CC:DD:EE:FF', 'Charlie');
       expect(success).toBe(true);
-      expect(mockedAxios.post).toHaveBeenCalledWith('/api/s/default/rest/user', {
+      expect(mockedAxios.post).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user', {
         mac: 'aa:bb:cc:dd:ee:ff',
         name: 'Charlie'
       });

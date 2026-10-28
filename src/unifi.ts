@@ -104,26 +104,42 @@ export class UnifiClient {
   public async setClientName(mac: string, name: string): Promise<boolean> {
     const normMac = mac.toLowerCase().trim();
     const cleanedName = name.trim();
+    if (!cleanedName) return false;
+
+    const endpoints = [
+      `/proxy/network/api/s/${this.config.site}`,
+      `/api/s/${this.config.site}`
+    ];
+
     try {
       await this.login();
 
-      const resp = await this.client.get(`/api/s/${this.config.site}/rest/user?mac=${normMac}`);
-      if (resp.data?.data?.[0]?._id) {
-        const userId = resp.data.data[0]._id;
-        const putResp = await this.client.put(`/api/s/${this.config.site}/rest/user/${userId}`, { name: cleanedName });
-        return putResp.status === 200;
-      }
+      for (const base of endpoints) {
+        try {
+          const resp = await this.client.get(`${base}/rest/user?mac=${normMac}`);
+          if (resp.data?.data?.[0]?._id) {
+            const userId = resp.data.data[0]._id;
+            const putResp = await this.client.put(`${base}/rest/user/${userId}`, { name: cleanedName });
+            if (putResp.status === 200) return true;
+          }
 
-      const staResp = await this.client.get(`/api/s/${this.config.site}/stat/sta?mac=${normMac}`);
-      if (staResp.data?.data?.[0]?._id) {
-        const userId = staResp.data.data[0]._id;
-        const postResp = await this.client.post(`/api/s/${this.config.site}/upd/user/${userId}`, { name: cleanedName });
-        return postResp.status === 200;
-      }
+          const staResp = await this.client.get(`${base}/stat/sta?mac=${normMac}`);
+          if (staResp.data?.data?.[0]?._id) {
+            const userId = staResp.data.data[0]._id;
+            const postResp = await this.client.post(`${base}/upd/user/${userId}`, { name: cleanedName });
+            if (postResp.status === 200) return true;
+          }
 
-      // Or create user
-      const createResp = await this.client.post(`/api/s/${this.config.site}/rest/user`, { mac: normMac, name: cleanedName });
-      return createResp.status === 200 || createResp.status === 201;
+          const createResp = await this.client.post(`${base}/rest/user`, { mac: normMac, name: cleanedName });
+          if (createResp.status === 200 || createResp.status === 201) return true;
+        } catch (err: any) {
+          if (err?.response?.status === 404 && base === endpoints[0]) {
+            continue;
+          }
+          throw err;
+        }
+      }
+      return false;
     } catch (err: any) {
       logger.warn(`Failed to set UniFi client name for ${normMac}: ${err.message || err}`);
       return false;
