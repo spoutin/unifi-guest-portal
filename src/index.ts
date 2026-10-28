@@ -7,7 +7,7 @@ import { logger } from './logger';
 
 dotenv.config({ path: process.env.CONFIG_PATH || '.env' });
 
-export const appVersion = '1.0.12';
+export const appVersion = '1.0.13';
 
 export const slackEnabled = process.env.SLACK_ENABLED !== 'false' && process.env.SLACK_ENABLED !== '0';
 
