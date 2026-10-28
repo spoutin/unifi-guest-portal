@@ -4,6 +4,7 @@ import { UnifiClient } from '../src/unifi';
 
 const mockActionCallbacks: { [actionId: string]: Function } = {};
 const mockPostMessage = jest.fn();
+const mockChatUpdate = jest.fn();
 
 jest.mock('@slack/bolt', () => {
   return {
@@ -15,7 +16,8 @@ jest.mock('@slack/bolt', () => {
         }),
         client: {
           chat: {
-            postMessage: mockPostMessage
+            postMessage: mockPostMessage,
+            update: mockChatUpdate
           }
         }
       };
@@ -123,18 +125,23 @@ describe('SlackIntegration', () => {
     expect(postArgs.blocks[0].text.text).toContain('Need &lt;WiFi&gt; &amp; Fun');
   });
 
-  it('should handle approve button click, update store status, call Unifi authorization and respond with success message', async () => {
+  it('should handle approve button click, update store status, call Unifi authorization and respond with success message via chat.update', async () => {
     // Setup request in store
     const mac = '00:11:22:33:44:55';
     store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business meeting');
 
     // Spy/Mock Unifi authorizeGuest
     const authorizeSpy = jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+    mockChatUpdate.mockResolvedValue({ ok: true });
 
     const ack = jest.fn();
     const respond = jest.fn();
     const action = { type: 'button', value: mac };
-    const body = { user: { name: 'admin_user' } };
+    const body = {
+      user: { name: 'admin_user' },
+      channel: { id: 'C999' },
+      message: { ts: '1234567890.123456' }
+    };
 
     // Trigger registered callback
     const approveCallback = mockActionCallbacks['approve_btn'];
@@ -144,25 +151,99 @@ describe('SlackIntegration', () => {
     expect(ack).toHaveBeenCalledTimes(1);
     expect(store.getRequestByMac(mac)?.status).toBe('approved');
     expect(authorizeSpy).toHaveBeenCalledWith(mac, 1440);
-    expect(respond).toHaveBeenCalledTimes(1);
-    const respondArgs = respond.mock.calls[0][0];
-    expect(respondArgs.text).toContain(`Approved guest ${mac}`);
-    expect(respondArgs.blocks[0].text.text).toContain('✅ *WiFi Request Approved*');
-    expect(respondArgs.blocks[0].text.text).toContain('*Name:* John Doe');
-    expect(respondArgs.blocks[0].text.text).toContain('*Reason:* Business meeting');
-    expect(respondArgs.blocks[0].text.text).toContain('@admin_user');
-    expect(respondArgs.blocks[0].text.text).toContain('Authorized');
+    expect(mockChatUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockChatUpdate.mock.calls[0][0];
+    expect(updateArgs.channel).toBe('C999');
+    expect(updateArgs.ts).toBe('1234567890.123456');
+    expect(updateArgs.text).toContain(`Approved guest ${mac}`);
+    expect(updateArgs.blocks[0].text.text).toContain('✅ *WiFi Request Approved*');
+    expect(updateArgs.blocks[0].text.text).toContain('*Name:* John Doe');
+    expect(updateArgs.blocks[0].text.text).toContain('*Reason:* Business meeting');
+    expect(updateArgs.blocks[0].text.text).toContain('@admin_user');
+    expect(updateArgs.blocks[0].text.text).toContain('Authorized');
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it('should fallback to respond() if chat.update throws an error', async () => {
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business meeting');
+
+    jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+    mockChatUpdate.mockRejectedValue(new Error('chat.update slack error'));
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = {
+      user: { name: 'admin_user' },
+      channel: { id: 'C999' },
+      message: { ts: '1234567890.123456' }
+    };
+
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({ ack, action, body, respond });
+    await (slack as any).app.lastActionTask;
+
+    expect(mockChatUpdate).toHaveBeenCalledTimes(1);
+    expect(respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replace_original: true,
+        text: expect.stringContaining(`Approved guest ${mac}`)
+      })
+    );
+  });
+
+  it('should debounce concurrent clicks for the same MAC in approve_btn and deny_btn', async () => {
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business meeting');
+
+    let resolveAuthorize: (val: boolean) => void;
+    const authorizePromise = new Promise<boolean>((resolve) => {
+      resolveAuthorize = resolve;
+    });
+    const authorizeSpy = jest.spyOn(unifi, 'authorizeGuest').mockImplementation(() => authorizePromise);
+    mockChatUpdate.mockResolvedValue({ ok: true });
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const action = { type: 'button', value: mac };
+    const body = {
+      user: { name: 'admin_user' },
+      channel: { id: 'C999' },
+      message: { ts: '1234567890.123456' }
+    };
+
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    const denyCallback = mockActionCallbacks['deny_btn'];
+
+    // First click starts authorization
+    await approveCallback({ ack, action, body, respond });
+
+    // Second click (duplicate approve or deny) while first is still running
+    await approveCallback({ ack, action, body, respond });
+    await denyCallback({ ack, action, body, respond });
+
+    // Resolve initial authorization
+    resolveAuthorize!(true);
+    await (slack as any).app.lastActionTask;
+
+    // authorizeGuest should only have been called ONCE
+    expect(authorizeSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should handle approve button click when UniFi authorization fails', async () => {
     const mac = '00:11:22:33:44:55';
     store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business');
     const authorizeSpy = jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(false);
+    mockChatUpdate.mockResolvedValue({ ok: true });
 
     const ack = jest.fn();
     const respond = jest.fn();
     const action = { type: 'button', value: mac };
-    const body = { user: { name: 'admin_user' } };
+    const body = {
+      user: { name: 'admin_user' },
+      container: { message_ts: '1234567890.999999' }
+    };
 
     const approveCallback = mockActionCallbacks['approve_btn'];
     await approveCallback({ ack, action, body, respond });
@@ -171,21 +252,28 @@ describe('SlackIntegration', () => {
     expect(ack).toHaveBeenCalledTimes(1);
     expect(store.getRequestByMac(mac)?.status).toBe('denied');
     expect(authorizeSpy).toHaveBeenCalledWith(mac, 1440);
-    expect(respond).toHaveBeenCalledTimes(1);
-    const respondArgs = respond.mock.calls[0][0];
-    expect(respondArgs.blocks[0].text.text).toContain('Failed');
-    expect(respondArgs.blocks[0].text.text).toContain('*Name:* John Doe');
-    expect(respondArgs.blocks[0].text.text).toContain('*Reason:* Business');
+    expect(mockChatUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockChatUpdate.mock.calls[0][0];
+    expect(updateArgs.channel).toBe('C123'); // fallback to config.channelId
+    expect(updateArgs.ts).toBe('1234567890.999999');
+    expect(updateArgs.blocks[0].text.text).toContain('Failed');
+    expect(updateArgs.blocks[0].text.text).toContain('*Name:* John Doe');
+    expect(updateArgs.blocks[0].text.text).toContain('*Reason:* Business');
   });
 
-  it('should handle deny button click, update store status and respond with denied message', async () => {
+  it('should handle deny button click, update store status and update message via chat.update', async () => {
     const mac = '00:11:22:33:44:55';
     store.createRequest(mac, 'AP-1', 'http://original-url', 'John Doe', 'Business meeting');
+    mockChatUpdate.mockResolvedValue({ ok: true });
 
     const ack = jest.fn();
     const respond = jest.fn();
     const action = { type: 'button', value: mac };
-    const body = { user: { name: 'admin_user' } };
+    const body = {
+      user: { name: 'admin_user' },
+      channel: { id: 'C999' },
+      message: { ts: '1234567890.123456' }
+    };
 
     const denyCallback = mockActionCallbacks['deny_btn'];
     await denyCallback({ ack, action, body, respond });
@@ -193,13 +281,16 @@ describe('SlackIntegration', () => {
 
     expect(ack).toHaveBeenCalledTimes(1);
     expect(store.getRequestByMac(mac)?.status).toBe('denied');
-    expect(respond).toHaveBeenCalledTimes(1);
-    const respondArgs = respond.mock.calls[0][0];
-    expect(respondArgs.text).toContain(`Denied guest ${mac}`);
-    expect(respondArgs.blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
-    expect(respondArgs.blocks[0].text.text).toContain('*Name:* John Doe');
-    expect(respondArgs.blocks[0].text.text).toContain('*Reason:* Business meeting');
-    expect(respondArgs.blocks[0].text.text).toContain('@admin_user');
+    expect(mockChatUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockChatUpdate.mock.calls[0][0];
+    expect(updateArgs.channel).toBe('C999');
+    expect(updateArgs.ts).toBe('1234567890.123456');
+    expect(updateArgs.text).toContain(`Denied guest ${mac}`);
+    expect(updateArgs.blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
+    expect(updateArgs.blocks[0].text.text).toContain('*Name:* John Doe');
+    expect(updateArgs.blocks[0].text.text).toContain('*Reason:* Business meeting');
+    expect(updateArgs.blocks[0].text.text).toContain('@admin_user');
+    expect(respond).not.toHaveBeenCalled();
   });
 
   it('should use custom guestAuthDuration if provided in SlackConfig', async () => {

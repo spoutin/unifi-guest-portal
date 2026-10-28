@@ -37,6 +37,7 @@ export class SlackIntegration {
   private store: Store;
   private unifi: UnifiClient;
   private enabled: boolean;
+  private inFlightActions: Set<string> = new Set();
 
   constructor(config: SlackConfig, store: Store, unifi: UnifiClient) {
     this.config = config;
@@ -233,46 +234,55 @@ export class SlackIntegration {
       if (!mac) return;
       const admin = (body as any).user?.name || 'unknown';
 
+      if (this.inFlightActions.has(mac)) {
+        logger.info(`Action already in flight for MAC ${mac}; ignoring duplicate approve_btn.`);
+        return;
+      }
+      this.inFlightActions.add(mac);
+
       logger.info(`Slack interactive button 'approve_btn' clicked for MAC: ${mac} by Admin: @${admin}`);
 
       // Run heavy UniFi and network response tasks asynchronously in the background
       // to guarantee the Slack ack() frame is dispatched and received instantly (within 3s)
       const task = (async () => {
-        const guestReq = this.store.getRequestByMac(mac);
-        const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
-        const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
+        try {
+          const guestReq = this.store.getRequestByMac(mac);
+          const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
+          const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
 
-        // Authorize on UniFi (using request's durationMinutes or config fallback)
-        const duration = (guestReq && guestReq.durationMinutes !== undefined) ? guestReq.durationMinutes : (this.config.guestAuthDuration || 1440);
-        const durationLine = `\n*Duration:* ${formatDuration(duration)}`;
-        const success = await this.unifi.authorizeGuest(mac, duration);
+          const channelId = (body as any).channel?.id || this.config.channelId;
+          const messageTs = (body as any).message?.ts || (body as any).container?.message_ts;
 
-        if (success) {
-          this.store.updateRequestStatus(mac, 'approved', admin);
-          logger.info(`MAC ${mac} successfully approved by @${admin} for ${duration}m and authorized on the UniFi Controller.`);
+          // Authorize on UniFi (using request's durationMinutes or config fallback)
+          const duration = (guestReq && guestReq.durationMinutes !== undefined) ? guestReq.durationMinutes : (this.config.guestAuthDuration || 1440);
+          const durationLine = `\n*Duration:* ${formatDuration(duration)}`;
+          const success = await this.unifi.authorizeGuest(mac, duration);
 
-          // Notify PKI internal backend if configured
-          if (this.config.pkiInternalUrl) {
-            const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest-authorized`;
-            const now = Math.floor(Date.now() / 1000);
-            try {
-              await axios.post(endpoint, {
-                mac: guestReq?.mac || mac,
-                name: guestReq?.name || 'Unknown',
-                reason: guestReq?.reason || 'Guest Access',
-                duration_minutes: duration,
-                approved_by: admin,
-                approved_at: now,
-                expires_at: now + (duration * 60)
-              }, { headers: this.getInternalApiHeaders(), timeout: 5000 });
-            } catch (err: any) {
-              logger.warn(`Failed to notify PKI internal endpoint: ${err.message || err}`);
+          if (success) {
+            this.store.updateRequestStatus(mac, 'approved', admin);
+            logger.info(`MAC ${mac} successfully approved by @${admin} for ${duration}m and authorized on the UniFi Controller.`);
+
+            // Notify PKI internal backend if configured
+            if (this.config.pkiInternalUrl) {
+              const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest-authorized`;
+              const now = Math.floor(Date.now() / 1000);
+              try {
+                await axios.post(endpoint, {
+                  mac: guestReq?.mac || mac,
+                  name: guestReq?.name || 'Unknown',
+                  reason: guestReq?.reason || 'Guest Access',
+                  duration_minutes: duration,
+                  approved_by: admin,
+                  approved_at: now,
+                  expires_at: now + (duration * 60)
+                }, { headers: this.getInternalApiHeaders(), timeout: 5000 });
+              } catch (err: any) {
+                logger.warn(`Failed to notify PKI internal endpoint: ${err.message || err}`);
+              }
             }
-          }
 
-          await respond({
-            text: `Approved guest ${mac}`,
-            blocks: [
+            const responseText = `Approved guest ${mac}`;
+            const responseBlocks = [
               {
                 type: 'section',
                 text: {
@@ -280,14 +290,33 @@ export class SlackIntegration {
                   text: `✅ *WiFi Request Approved*${nameLine}${reasonLine}${durationLine}\n*MAC Address:* \`${mac}\`\n*Approved By:* @${admin}\n*UniFi Status:* Authorized successfully`
                 }
               }
-            ]
-          });
-        } else {
-          this.store.updateRequestStatus(mac, 'denied', admin);
-          logger.warn(`MAC ${mac} authorization FAILED on the UniFi Controller. Reverting state to denied.`);
-          await respond({
-            text: `WiFi Approval Failed for ${mac}`,
-            blocks: [
+            ];
+
+            try {
+              if (channelId && messageTs) {
+                await app.client.chat.update({
+                  channel: channelId,
+                  ts: messageTs,
+                  text: responseText,
+                  blocks: responseBlocks
+                });
+              } else {
+                throw new Error('Missing channelId or messageTs for chat.update');
+              }
+            } catch (err: any) {
+              logger.warn(`chat.update failed in approve_btn; falling back to respond(): ${err.message || err}`);
+              await respond({
+                replace_original: true,
+                text: responseText,
+                blocks: responseBlocks
+              });
+            }
+          } else {
+            this.store.updateRequestStatus(mac, 'denied', admin);
+            logger.warn(`MAC ${mac} authorization FAILED on the UniFi Controller. Reverting state to denied.`);
+
+            const responseText = `WiFi Approval Failed for ${mac}`;
+            const responseBlocks = [
               {
                 type: 'section',
                 text: {
@@ -295,8 +324,32 @@ export class SlackIntegration {
                   text: `⚠️ *WiFi Approval Failed*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Attempted By:* @${admin}\n*Error:* Could not authorize client on the UniFi Controller. Check the container's logs (\`journalctl -u unifi-guest-portal\`) for timing details.`
                 }
               }
-            ]
-          });
+            ];
+
+            try {
+              if (channelId && messageTs) {
+                await app.client.chat.update({
+                  channel: channelId,
+                  ts: messageTs,
+                  text: responseText,
+                  blocks: responseBlocks
+                });
+              } else {
+                throw new Error('Missing channelId or messageTs for chat.update');
+              }
+            } catch (err: any) {
+              logger.warn(`chat.update failed in approve_btn; falling back to respond(): ${err.message || err}`);
+              await respond({
+                replace_original: true,
+                text: responseText,
+                blocks: responseBlocks
+              });
+            }
+          }
+        } catch (err: any) {
+          logger.error(`Error processing approve_btn for MAC ${mac}: ${err.message || err}`);
+        } finally {
+          this.inFlightActions.delete(mac);
         }
       })();
 
@@ -312,33 +365,42 @@ export class SlackIntegration {
       if (!mac) return;
       const admin = (body as any).user?.name || 'unknown';
 
+      if (this.inFlightActions.has(mac)) {
+        logger.info(`Action already in flight for MAC ${mac}; ignoring duplicate deny_btn.`);
+        return;
+      }
+      this.inFlightActions.add(mac);
+
       logger.info(`Slack interactive button 'deny_btn' clicked for MAC: ${mac} by Admin: @${admin}`);
 
       // Run asynchronously in background to prevent Slack timeout
       const task = (async () => {
-        const guestReq = this.store.getRequestByMac(mac);
-        const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
-        const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
+        try {
+          const guestReq = this.store.getRequestByMac(mac);
+          const nameLine = guestReq ? `\n*Name:* ${escapeSlack(guestReq.name)}` : '';
+          const reasonLine = guestReq ? `\n*Reason:* ${escapeSlack(guestReq.reason)}` : '';
 
-        this.store.updateRequestStatus(mac, 'denied', admin);
-        logger.info(`MAC ${mac} was denied Wi-Fi access by @${admin}.`);
+          const channelId = (body as any).channel?.id || this.config.channelId;
+          const messageTs = (body as any).message?.ts || (body as any).container?.message_ts;
 
-        // Notify PKI internal backend if configured
-        if (this.config.pkiInternalUrl) {
-          const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest/${mac}/status`;
-          try {
-            await axios.post(endpoint, {
-              status: 'denied',
-              processedBy: admin
-            }, { headers: this.getInternalApiHeaders(), timeout: 5000 });
-          } catch (err: any) {
-            logger.warn(`Failed to notify PKI internal deny endpoint: ${err.message || err}`);
+          this.store.updateRequestStatus(mac, 'denied', admin);
+          logger.info(`MAC ${mac} was denied Wi-Fi access by @${admin}.`);
+
+          // Notify PKI internal backend if configured
+          if (this.config.pkiInternalUrl) {
+            const endpoint = `${this.config.pkiInternalUrl.replace(/\/+$/, '')}/api/internal/guest/${mac}/status`;
+            try {
+              await axios.post(endpoint, {
+                status: 'denied',
+                processedBy: admin
+              }, { headers: this.getInternalApiHeaders(), timeout: 5000 });
+            } catch (err: any) {
+              logger.warn(`Failed to notify PKI internal deny endpoint: ${err.message || err}`);
+            }
           }
-        }
 
-        await respond({
-          text: `Denied guest ${mac}`,
-          blocks: [
+          const responseText = `Denied guest ${mac}`;
+          const responseBlocks = [
             {
               type: 'section',
               text: {
@@ -346,8 +408,32 @@ export class SlackIntegration {
                 text: `❌ *WiFi Request Denied*${nameLine}${reasonLine}\n*MAC Address:* \`${mac}\`\n*Denied By:* @${admin}`
               }
             }
-          ]
-        });
+          ];
+
+          try {
+            if (channelId && messageTs) {
+              await app.client.chat.update({
+                channel: channelId,
+                ts: messageTs,
+                text: responseText,
+                blocks: responseBlocks
+              });
+            } else {
+              throw new Error('Missing channelId or messageTs for chat.update');
+            }
+          } catch (err: any) {
+            logger.warn(`chat.update failed in deny_btn; falling back to respond(): ${err.message || err}`);
+            await respond({
+              replace_original: true,
+              text: responseText,
+              blocks: responseBlocks
+            });
+          }
+        } catch (err: any) {
+          logger.error(`Error processing deny_btn for MAC ${mac}: ${err.message || err}`);
+        } finally {
+          this.inFlightActions.delete(mac);
+        }
       })();
 
       (app as any).lastActionTask = task;
