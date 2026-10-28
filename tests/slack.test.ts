@@ -36,6 +36,7 @@ describe('SlackIntegration', () => {
 
     store = new Store();
     unifi = new UnifiClient({ url: 'http://foo', username: 'u', password: 'p', site: 'default' });
+    jest.spyOn(unifi, 'setClientName').mockResolvedValue(true);
     slack = new SlackIntegration({
       botToken: 'xoxb-test',
       appToken: 'xapp-test',
@@ -485,5 +486,47 @@ describe('SlackIntegration', () => {
 
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond.mock.calls[0][0].blocks[0].text.text).toContain('❌ *WiFi Request Denied*');
+  });
+
+  it('should call setClientName with guest name upon successful approval', async () => {
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'Alice Smith', 'Conference');
+    jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+    const setNameSpy = jest.spyOn(unifi, 'setClientName').mockResolvedValue(true);
+    mockChatUpdate.mockResolvedValue({ ok: true });
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({
+      ack,
+      action: { type: 'button', value: mac },
+      body: { user: { name: 'admin_user' }, channel: { id: 'C999' }, message: { ts: '123' } },
+      respond
+    });
+    await (slack as any).app.lastActionTask;
+
+    expect(setNameSpy).toHaveBeenCalledWith(mac, 'Alice Smith');
+  });
+
+  it('should handle setClientName failure gracefully without failing approval', async () => {
+    const mac = '00:11:22:33:44:55';
+    store.createRequest(mac, 'AP-1', 'http://original-url', 'Bob Smith', 'Meeting');
+    jest.spyOn(unifi, 'authorizeGuest').mockResolvedValue(true);
+    jest.spyOn(unifi, 'setClientName').mockRejectedValue(new Error('Network error'));
+    mockChatUpdate.mockResolvedValue({ ok: true });
+
+    const ack = jest.fn();
+    const respond = jest.fn();
+    const approveCallback = mockActionCallbacks['approve_btn'];
+    await approveCallback({
+      ack,
+      action: { type: 'button', value: mac },
+      body: { user: { name: 'admin_user' }, channel: { id: 'C999' }, message: { ts: '123' } },
+      respond
+    });
+    await (slack as any).app.lastActionTask;
+
+    expect(store.getRequestByMac(mac)?.status).toBe('approved');
   });
 });

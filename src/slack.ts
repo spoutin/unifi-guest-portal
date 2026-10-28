@@ -39,6 +39,10 @@ export class SlackIntegration {
   private enabled: boolean;
   private inFlightActions: Set<string> = new Set();
 
+  private get unifiClient(): UnifiClient {
+    return this.unifi;
+  }
+
   constructor(config: SlackConfig, store: Store, unifi: UnifiClient) {
     this.config = config;
     this.store = store;
@@ -261,6 +265,12 @@ export class SlackIntegration {
           if (success) {
             this.store.updateRequestStatus(mac, 'approved', admin);
             logger.info(`MAC ${mac} successfully approved by @${admin} for ${duration}m and authorized on the UniFi Controller.`);
+
+            if (guestReq?.name) {
+              await this.unifiClient.setClientName(mac, guestReq.name).catch((err: any) => {
+                logger.warn(`Failed to set UniFi client name for ${mac}: ${err.message || err}`);
+              });
+            }
 
             // Notify PKI internal backend if configured
             if (this.config.pkiInternalUrl) {

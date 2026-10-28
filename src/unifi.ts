@@ -100,4 +100,33 @@ export class UnifiClient {
       return false;
     }
   }
+
+  public async setClientName(mac: string, name: string): Promise<boolean> {
+    const normMac = mac.toLowerCase().trim();
+    const cleanedName = name.trim();
+    try {
+      await this.login();
+
+      const resp = await this.client.get(`/api/s/${this.config.site}/rest/user?mac=${normMac}`);
+      if (resp.data?.data?.[0]?._id) {
+        const userId = resp.data.data[0]._id;
+        const putResp = await this.client.put(`/api/s/${this.config.site}/rest/user/${userId}`, { name: cleanedName });
+        return putResp.status === 200;
+      }
+
+      const staResp = await this.client.get(`/api/s/${this.config.site}/stat/sta?mac=${normMac}`);
+      if (staResp.data?.data?.[0]?._id) {
+        const userId = staResp.data.data[0]._id;
+        const postResp = await this.client.post(`/api/s/${this.config.site}/upd/user/${userId}`, { name: cleanedName });
+        return postResp.status === 200;
+      }
+
+      // Or create user
+      const createResp = await this.client.post(`/api/s/${this.config.site}/rest/user`, { mac: normMac, name: cleanedName });
+      return createResp.status === 200 || createResp.status === 201;
+    } catch (err: any) {
+      logger.warn(`Failed to set UniFi client name for ${normMac}: ${err.message || err}`);
+      return false;
+    }
+  }
 }
