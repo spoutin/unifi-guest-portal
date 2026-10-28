@@ -116,20 +116,33 @@ export class UnifiClient {
 
       for (const base of endpoints) {
         try {
-          const resp = await this.client.get(`${base}/rest/user?mac=${normMac}`);
-          if (resp.data?.data?.[0]?._id) {
-            const userId = resp.data.data[0]._id;
-            const putResp = await this.client.put(`${base}/rest/user/${userId}`, { name: cleanedName });
-            if (putResp.status === 200) return true;
+          // 1. Check active stations first
+          const staResp = await this.client.get(`${base}/stat/sta`);
+          const stations: any[] = staResp.data?.data || [];
+          const staMatch = stations.find((s: any) => s.mac?.toLowerCase() === normMac);
+          if (staMatch?._id) {
+            const userId = staMatch._id;
+            await this.client.post(`${base}/upd/user/${userId}`, { name: cleanedName });
+            try {
+              await this.client.put(`${base}/rest/user/${userId}`, { name: cleanedName });
+            } catch (_) {}
+            return true;
           }
 
-          const staResp = await this.client.get(`${base}/stat/sta?mac=${normMac}`);
-          if (staResp.data?.data?.[0]?._id) {
-            const userId = staResp.data.data[0]._id;
-            const postResp = await this.client.post(`${base}/upd/user/${userId}`, { name: cleanedName });
-            if (postResp.status === 200) return true;
+          // 2. Check user list
+          const userResp = await this.client.get(`${base}/rest/user`);
+          const users: any[] = userResp.data?.data || [];
+          const userMatch = users.find((u: any) => u.mac?.toLowerCase() === normMac);
+          if (userMatch?._id) {
+            const userId = userMatch._id;
+            await this.client.put(`${base}/rest/user/${userId}`, { name: cleanedName });
+            try {
+              await this.client.post(`${base}/upd/user/${userId}`, { name: cleanedName });
+            } catch (_) {}
+            return true;
           }
 
+          // 3. Create user
           const createResp = await this.client.post(`${base}/rest/user`, { mac: normMac, name: cleanedName });
           if (createResp.status === 200 || createResp.status === 201) return true;
         } catch (err: any) {

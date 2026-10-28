@@ -101,6 +101,9 @@ describe('UnifiClient', () => {
         data: {}
       }); // Login call
       mockedAxios.get.mockResolvedValueOnce({
+        data: { data: [] }
+      }); // Query stat/sta returns empty
+      mockedAxios.get.mockResolvedValueOnce({
         data: { data: [{ _id: 'user123', mac: '00:11:22:33:44:55' }] }
       }); // Query rest/user
       mockedAxios.put.mockResolvedValueOnce({
@@ -111,7 +114,8 @@ describe('UnifiClient', () => {
       const client = new UnifiClient(config);
       const success = await client.setClientName('00:11:22:33:44:55', 'Alice');
       expect(success).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user?mac=00:11:22:33:44:55');
+      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/stat/sta');
+      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user');
       expect(mockedAxios.put).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user/user123', { name: 'Alice' });
     });
 
@@ -135,8 +139,7 @@ describe('UnifiClient', () => {
       });
       const success = await client.setClientName('00:11:22:33:44:55', 'Bob');
       expect(success).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/rest/user?mac=00:11:22:33:44:55');
-      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/stat/sta?mac=00:11:22:33:44:55');
+      expect(mockedAxios.get).toHaveBeenCalledWith('/proxy/network/api/s/default/stat/sta');
       expect(mockedAxios.post).toHaveBeenCalledWith('/proxy/network/api/s/default/upd/user/sta999', { name: 'Bob' });
     });
 
